@@ -281,6 +281,19 @@
     .inventory-sale-quantity { display: grid; gap: .25rem; color: var(--muted); font-size: .72rem; }
     .inventory-sale-quantity input { width: 5rem; min-height: 36px; padding: .4rem; border: 1px solid var(--line); border-radius: 8px; }
     .delete-dialog-content { padding: 0; background: #f6f8fc; }
+    .confirm-dialog-content { width: min(460px, calc(100vw - 2rem)); overflow: hidden; padding: 0; border: 1px solid #394967; border-radius: 20px; background: #111a2b; box-shadow: 0 24px 80px #0009; }
+    .confirm-embed { overflow: hidden; }
+    .confirm-embed-header { padding: 1.3rem 1.5rem 1.1rem; border-bottom: 1px solid #293650; background: linear-gradient(130deg, #1a2842, #121b2c); }
+    .confirm-embed-header.is-danger { border-top: 4px solid #e45b70; }
+    .confirm-embed-header.is-primary { border-top: 4px solid #6378f4; }
+    .confirm-embed-kicker { margin-bottom: .45rem; color: #aab9d4; font-size: .7rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+    .confirm-embed-header h2 { margin: 0; color: #f2f5ff; font-size: 1.25rem; letter-spacing: -.025em; }
+    .confirm-embed-body { padding: 1.15rem 1.5rem 1.4rem; }
+    .confirm-embed-message { margin: 0; color: #bdc9df; line-height: 1.6; }
+    .confirm-embed-detail { display: block; margin-top: .65rem; color: #f0f3ff; font-weight: 750; overflow-wrap: anywhere; }
+    .confirm-embed-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .6rem; margin-top: 1.25rem; }
+    .button-confirm-primary { color: #fff; background: #4a63e6; }
+    .button-confirm-primary:hover { background: #384fc8; }
     .delete-embed { overflow: hidden; border-left: 5px solid #d34b60; }
     .delete-embed-header { padding: 1.35rem 1.5rem; color: #fff; background: linear-gradient(125deg, #6e2d4a, #a9435b 65%, #d16c73); }
     .delete-embed-kicker { margin-bottom: .45rem; color: #ffe4e8; font-size: .7rem; font-weight: 800; letter-spacing: .14em; }
@@ -1248,6 +1261,25 @@
     </div>
   </dialog>
 
+  <dialog id="confirmActionDialog" aria-labelledby="confirmActionTitle">
+    <div class="confirm-dialog-content">
+      <article class="confirm-embed">
+        <header class="confirm-embed-header" id="confirmActionHeader">
+          <div class="confirm-embed-kicker" id="confirmActionKicker">Confirmación</div>
+          <h2 id="confirmActionTitle">¿Deseas continuar?</h2>
+        </header>
+        <div class="confirm-embed-body">
+          <p class="confirm-embed-message" id="confirmActionMessage"></p>
+          <strong class="confirm-embed-detail" id="confirmActionDetail" hidden></strong>
+          <div class="confirm-embed-actions">
+            <button class="button button-secondary" id="cancelConfirmAction" type="button">Cancelar</button>
+            <button class="button button-confirm-primary" id="acceptConfirmAction" type="button">Aceptar</button>
+          </div>
+        </div>
+      </article>
+    </div>
+  </dialog>
+
   <dialog id="logoutDialog" aria-labelledby="logoutDialogTitle">
     <div class="dialog-content delete-dialog-content">
       <article class="logout-embed">
@@ -1375,6 +1407,14 @@
       adminModuleContent: document.querySelector("#adminModuleContent"),
       ownerQuickNav: document.querySelector("#ownerQuickNav"),
       ownerQuickToggle: document.querySelector("#ownerQuickToggle"),
+      confirmActionDialog: document.querySelector("#confirmActionDialog"),
+      confirmActionHeader: document.querySelector("#confirmActionHeader"),
+      confirmActionKicker: document.querySelector("#confirmActionKicker"),
+      confirmActionTitle: document.querySelector("#confirmActionTitle"),
+      confirmActionMessage: document.querySelector("#confirmActionMessage"),
+      confirmActionDetail: document.querySelector("#confirmActionDetail"),
+      cancelConfirmAction: document.querySelector("#cancelConfirmAction"),
+      acceptConfirmAction: document.querySelector("#acceptConfirmAction"),
       siteNav: document.querySelector("#siteNav"),
       homeBackButton: document.querySelector("#homeBackButton"),
       routeViews: [...document.querySelectorAll(".route-view")],
@@ -1515,6 +1555,7 @@
     let editingOrganizationCatalogId = null;
     let editingRoleId = null;
     let editingCollectionItem = null;
+    let confirmActionResolver = null;
     let restoredScrollY = 0;
     let pageSessionReady = false;
     let portalData = loadPortalData();
@@ -2231,6 +2272,48 @@
     function closeDialog(dialog) {
       if (dialog.open) dialog.close();
     }
+
+    function confirmAction({
+      title,
+      message,
+      detail = "",
+      kicker = "Confirmación",
+      confirmLabel = "Aceptar",
+      danger = false
+    }) {
+      if (confirmActionResolver) resolveConfirmAction(false);
+      elements.confirmActionKicker.textContent = kicker;
+      elements.confirmActionTitle.textContent = title;
+      elements.confirmActionMessage.textContent = message;
+      elements.confirmActionDetail.textContent = detail;
+      elements.confirmActionDetail.hidden = !detail;
+      elements.acceptConfirmAction.textContent = confirmLabel;
+      elements.acceptConfirmAction.className = `button ${danger ? "button-confirm-delete" : "button-confirm-primary"}`;
+      elements.confirmActionHeader.classList.toggle("is-danger", danger);
+      elements.confirmActionHeader.classList.toggle("is-primary", !danger);
+      openDialog(elements.confirmActionDialog);
+      return new Promise(resolve => {
+        confirmActionResolver = resolve;
+        elements.acceptConfirmAction.focus();
+      });
+    }
+
+    function resolveConfirmAction(accepted) {
+      const resolve = confirmActionResolver;
+      confirmActionResolver = null;
+      closeDialog(elements.confirmActionDialog);
+      if (resolve) resolve(accepted);
+    }
+
+    elements.acceptConfirmAction.addEventListener("click", () => resolveConfirmAction(true));
+    elements.cancelConfirmAction.addEventListener("click", () => resolveConfirmAction(false));
+    elements.confirmActionDialog.addEventListener("cancel", event => {
+      event.preventDefault();
+      resolveConfirmAction(false);
+    });
+    elements.confirmActionDialog.addEventListener("click", event => {
+      if (event.target === elements.confirmActionDialog) resolveConfirmAction(false);
+    });
 
     function updateConnectionRelationshipField() {
       const select = elements.linkForm.elements.relationship;
@@ -3427,17 +3510,12 @@
           assignmentActions.querySelectorAll("select").forEach((select, index) => {
             select.dataset.workerField = ["department", "position", "company"][index];
           });
-          const roleSelect = createWorkerAssignmentSelect(
-            "Rol",
-            workerRoles.map(role => role.name),
-            worker.roleName || "Trabajador"
-          );
+          const roleSelect = document.createElement("select");
+          roleSelect.setAttribute("aria-label", "Rol");
+          roleSelect.add(new Option("Selecciona rol", ""));
+          workerRoles.forEach(role => roleSelect.add(new Option(role.name, role.id)));
           roleSelect.dataset.workerField = "role";
-          roleSelect.querySelectorAll("option").forEach(option => {
-            const role = workerRoles.find(item => item.name === option.value);
-            if (role) option.value = role.id;
-          });
-          roleSelect.value = worker.role_id || workerRoles.find(role => role.name === (worker.roleName || "Trabajador"))?.id || "";
+          roleSelect.value = worker.role_id || "";
           assignmentActions.append(roleSelect);
           const saveProfile = document.createElement("button");
           saveProfile.type = "button";
@@ -3544,8 +3622,21 @@
       if (!isAdmin) return;
       const action = button.dataset.workerAction;
       const email = button.dataset.workerEmail;
-      if (action === "dismiss" && !window.confirm(`¿Seguro que deseas despedir a ${email}? Se revocará su acceso.`)) return;
-      if (action === "reset_password" && !window.confirm(`¿Enviar un enlace para restablecer la contraseña a ${email}?`)) return;
+      if (action === "dismiss" && !await confirmAction({
+        title: "¿Despedir a este trabajador?",
+        message: "Se revocará su acceso al portal. Esta acción se puede revisar con el administrador.",
+        detail: email,
+        kicker: "Acción de personal",
+        confirmLabel: "Sí, despedir",
+        danger: true
+      })) return;
+      if (action === "reset_password" && !await confirmAction({
+        title: "¿Enviar un enlace de recuperación?",
+        message: "Se enviará un enlace seguro para que esta persona cambie su contraseña.",
+        detail: email,
+        kicker: "Seguridad de la cuenta",
+        confirmLabel: "Enviar enlace"
+      })) return;
       const row = button.closest(".approved-worker-row");
       const workersSection = button.closest(".approved-workers-section");
       const message = action === "warn"
@@ -3671,7 +3762,23 @@
     }
 
     async function deleteOrganizationItem(action, id) {
-      if (!isAdmin || !window.confirm("¿Seguro que deseas eliminar este elemento?")) return;
+      if (!isAdmin) return;
+      const item = action === "role_delete"
+        ? workerRoles.find(role => role.id === id)
+        : organizationCatalogs.find(catalog => catalog.id === id);
+      if (!item) return;
+      const isRole = action === "role_delete";
+      const accepted = await confirmAction({
+        title: isRole ? `¿Eliminar el rol “${item.name}”?` : `¿Eliminar “${item.name}”?`,
+        message: isRole
+          ? "El rol se eliminará aunque haya trabajadores asignados. Sus cuentas permanecerán activas y aparecerán sin rol en Personas para que puedas asignarles otro."
+          : "Esta acción eliminará este elemento del catálogo y no se puede deshacer.",
+        detail: isRole ? "Los trabajadores afectados quedarán sin permisos de rol hasta que se les asigne uno nuevo." : "",
+        kicker: isRole ? "Gestión de roles" : "Gestión de catálogos",
+        confirmLabel: "Sí, eliminar",
+        danger: true
+      });
+      if (!accepted) return;
       try {
         await apiRequest("/api/worker-requests", {
           method: "DELETE",
@@ -3683,6 +3790,7 @@
           renderAdminCatalogs(activeOrganizationCatalogKind);
         } else {
           workerRoles = workerRoles.filter(role => role.id !== id);
+          adminWorkersLoaded = false;
           renderAdminCatalogs("roles");
         }
         setStatus(document.getElementById("adminCatalogStatus"), "Elemento eliminado.", "success");

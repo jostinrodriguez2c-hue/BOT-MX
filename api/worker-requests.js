@@ -197,10 +197,6 @@ module.exports = async function handler(req, res) {
         if (role.name === "Trabajador" || role.name === "Administrador") {
           return sendJson(res, 403, { error: "No se puede eliminar un rol protegido del sistema." });
         }
-        const used = await supabase(
-          `/rest/v1/worker_applications?role_id=eq.${encodeURIComponent(payload.id)}&select=email&limit=1`
-        );
-        if (used.length) return sendJson(res, 409, { error: "No se puede eliminar un rol asignado a trabajadores." });
         await supabase(`/rest/v1/worker_roles?id=eq.${encodeURIComponent(payload.id)}`, { method: "DELETE" });
         return sendJson(res, 200, { ok: true });
       }
