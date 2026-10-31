@@ -6,6 +6,7 @@ module.exports = async function handler(req, res) {
     res.setHeader("Allow", "POST");
     return sendJson(res, 405, { error: "Method not allowed." });
   }
+  return sendJson(res, 200, { received: true, demo_mode: true });
   try {
     const paymentId = req.query && req.query["data.id"];
     if (!paymentId || typeof paymentId !== "string" || !/^\d{1,32}$/.test(paymentId)) {

@@ -3,6 +3,7 @@ const { body, emailOtp, hashIp, onlyMethod, otpHash, publicError, rpc, sendJson,
 
 module.exports = async function handler(req, res) {
   if (!onlyMethod(req, res, "POST")) return;
+  return sendJson(res, 410, { error: "El pago está en modo de demostración: no se envían códigos ni se procesa un pago real." });
   try {
     const payload = body(req);
     const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";

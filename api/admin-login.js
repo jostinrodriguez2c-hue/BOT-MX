@@ -19,6 +19,9 @@ module.exports = async function handler(req, res) {
     if (!response.ok || !session.access_token || !session.user) {
       return sendJson(res, 401, { error: "Correo o contraseña incorrectos." });
     }
+    if (session.user.email.toLowerCase() !== getEnv("ADMIN_EMAIL").trim().toLowerCase()) {
+      return sendJson(res, 403, { error: "Esta cuenta no tiene permisos de administrador." });
+    }
     const admins = await supabase(`/rest/v1/admin_users?user_id=eq.${encodeURIComponent(session.user.id)}&select=user_id&limit=1`);
     if (!admins.length) {
       return sendJson(res, 403, { error: "Esta cuenta no tiene permisos de administrador." });

@@ -2,6 +2,7 @@ const { body, getEnv, onlyMethod, otpHash, publicError, rpc, sendJson, supabase 
 
 module.exports = async function handler(req, res) {
   if (!onlyMethod(req, res, "POST")) return;
+  return sendJson(res, 410, { error: "El pago está en modo de demostración: no se procesa un pago real." });
   let orderId;
   try {
     const payload = body(req);
