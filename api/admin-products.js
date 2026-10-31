@@ -1,4 +1,4 @@
-const { body, onlyMethod, publicError, requireAdmin, sendJson, supabase } = require("../lib/api");
+const { body, onlyMethod, publicError, requireInventoryAccess, sendJson, supabase } = require("../lib/api");
 
 function validProduct(value, partial) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -18,7 +18,7 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: "Method not allowed." });
   }
   try {
-    await requireAdmin(req);
+    await requireInventoryAccess(req);
     if (req.method === "GET") {
       const products = await supabase("/rest/v1/products?active=eq.true&select=*&order=name.asc");
       return sendJson(res, 200, { products });

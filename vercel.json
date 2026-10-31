@@ -1,4 +1,16 @@
 {
+  "redirects": [
+    {
+      "source": "/index-anterior.html",
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/index-portal-amigos.html",
+      "destination": "/",
+      "permanent": false
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",

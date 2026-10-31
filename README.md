@@ -37,9 +37,13 @@ Sitio estático con funciones de Vercel y catálogo/inventario en Supabase. Las 
 
 ## Uso y límites
 
-- En el sitio publicado, el catálogo público, cantidades, precios, categorías y ventas de inventario se consultan/actualizan en Supabase. Los cambios hechos en el HTML en modo `file://` se guardan en el navegador.
-- La sección original de personas, sus accesos y sus registros continúan guardándose en el navegador; este backend sincroniza el inventario y las compras simuladas.
+- En el sitio publicado, el inventario, cantidades, precios, categorías y ventas se consultan/actualizan en Supabase. Los cambios hechos en el HTML en modo `file://` se guardan en el navegador.
+- Cualquier persona puede consultar el directorio, los productos y realizar compras simuladas sin iniciar sesión. Solo las funciones de administración del inventario y del sitio requieren una cuenta aprobada. Las solicitudes de acceso solo permiten enviar el correo.
+- La sección original de personas, sus accesos y sus registros continúan guardándose en el navegador; este backend sincroniza el inventario y las compras simuladas. Los datos publicados en el directorio son visibles para cualquiera.
+- El formulario ofrece una lista de países y un catálogo de ciudades/sedes que el administrador puede ampliar. No existe una lista práctica y completa de todas las ciudades del mundo; agrega las sedes que use tu organización.
 - Al confirmar una compra simulada, el servidor valida y descuenta existencias e incrementa las ventas de demostración de forma atómica. Tiene un límite por dirección de red. No se piden datos de tarjeta, correo ni código de verificación, y no se realiza un cobro.
 - Los endpoints anteriores de pago por Mercado Pago/código de correo no forman parte del flujo actual de demostración; no agregues credenciales de pago si solo necesitas simular compras.
-- La administración publicada usa usuarios de Supabase Auth incluidos en `admin_users`; la clave local de demostración no concede permisos al servidor.
+- Administradores y trabajadores usan el mismo botón **Trabajador** para iniciar sesión. El servidor asigna el rol; **Administrar todo** y **Ver solicitudes** solo aparecen si la sesión pertenece al correo configurado en `ADMIN_EMAIL` y a `admin_users`. Si una cuenta no ha sido aprobada, el formulario de acceso muestra el error y no inicia sesión. No se habilita un acceso local con contraseña compartida; usa `vercel dev` o el sitio publicado para autenticarte. Los archivos HTML anteriores redirigen a la página actual.
+- Para solicitar acceso, la persona escribe solo su correo desde **Trabajador**. El administrador revisa la solicitud en **Ver solicitudes**. Después de ser aprobada, la persona crea su propia cuenta y contraseña; si Supabase pide confirmar el correo, debe hacerlo antes de iniciar sesión. Las contraseñas nunca se guardan en las tablas de la aplicación ni se muestran al administrador.
+- Las cuentas de trabajador aprobadas pueden administrar productos, categorías y ventas del inventario, pero no pueden administrar perfiles, solicitudes ni la configuración general.
 - Para aceptar pagos reales se necesitaría implementar y probar un flujo de pago habilitado por el dueño; esta simulación no demuestra ni procesa pagos reales.

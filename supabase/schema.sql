@@ -21,6 +21,20 @@ create table if not exists public.admin_users (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.worker_applications (
+  email text primary key check (char_length(email) between 3 and 254),
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz,
+  reviewed_by uuid references auth.users(id) on delete set null
+);
+
+create table if not exists public.worker_users (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  email text not null unique check (char_length(email) between 3 and 254),
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.purchase_orders (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references public.products(id),
@@ -64,13 +78,17 @@ create table if not exists public.purchase_rate_limits (
 alter table public.products enable row level security;
 alter table public.product_categories enable row level security;
 alter table public.admin_users enable row level security;
+alter table public.worker_applications enable row level security;
+alter table public.worker_users enable row level security;
 alter table public.purchase_orders enable row level security;
 alter table public.purchase_rate_limits enable row level security;
 
 revoke all on public.products, public.product_categories, public.admin_users,
-  public.purchase_orders, public.purchase_rate_limits from anon, authenticated;
+  public.worker_applications, public.worker_users, public.purchase_orders, public.purchase_rate_limits
+  from anon, authenticated;
 grant all on public.products, public.product_categories, public.admin_users,
-  public.purchase_orders, public.purchase_rate_limits to service_role;
+  public.worker_applications, public.worker_users, public.purchase_orders, public.purchase_rate_limits
+  to service_role;
 
 create or replace function public.create_purchase_request(
   p_product_id uuid,

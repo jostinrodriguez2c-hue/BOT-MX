@@ -299,6 +299,7 @@
     }
     .field textarea { min-height: 120px; resize: vertical; }
     .field input:focus, .field textarea:focus, .field select:focus { border-color: #7189e9; box-shadow: 0 0 0 3px #3659d91a; }
+    .option-manager { display: grid; gap: .45rem; padding: .7rem; border: 1px solid #e8ebf3; border-radius: 11px; background: #f7f8fc; }
     .form-actions { display: flex; align-items: center; gap: .75rem; grid-column: 1 / -1; }
     .form-note, .status-message { color: var(--muted); font-size: .85rem; line-height: 1.45; }
     .privacy-note { grid-column: 1 / -1; margin: -.25rem 0 0; padding: .8rem .9rem; border-radius: 10px; color: #52617b; background: #f0f3ff; font-size: .82rem; line-height: 1.5; }
@@ -493,6 +494,18 @@
     .chooser-card strong { font-size: clamp(1.5rem, 3vw, 2rem); }
     .chooser-card > span:last-child { color: var(--muted); line-height: 1.5; }
     .chooser-icon { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 16px; color: #bdc8ff; background: #25365a; font-size: 1.65rem; }
+    .worker-access-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 1.3rem 0; text-align: left; }
+    .worker-access-grid > .generic-form { align-content: start; margin: 0; }
+    .worker-access-grid h2 { grid-column: 1 / -1; margin: 0; font-size: 1.15rem; }
+    .worker-access-grid .generic-form > p, .worker-access-grid .generic-form > button, .worker-access-grid details { grid-column: 1 / -1; }
+    .worker-access-grid details { padding: .8rem; border: 1px solid #2c3b59; border-radius: 12px; background: #172338; }
+    .worker-access-grid summary { color: #dce5f8; font-weight: 700; cursor: pointer; }
+    .worker-register-form { grid-template-columns: 1fr; margin-bottom: 0; padding: .8rem 0 0; border: 0; background: transparent; box-shadow: none; }
+    .entry-back { margin-top: 1rem; }
+    .worker-requests-list { display: grid; gap: .65rem; max-height: 55vh; overflow-y: auto; }
+    .worker-request-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .8rem; border: 1px solid #34425d; border-radius: 11px; background: #172338; }
+    .worker-request-email { min-width: 0; overflow-wrap: anywhere; font-weight: 650; }
+    .worker-request-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
     .card, .info-card, .stat-card, .data-table-wrap, .generic-form, .admin-form, .admin-side-nav, .admin-module, .faq-list details, .admin-panel, .admin-menu-button, .manage-row, .inventory-summary-card, .connection-card, .connection-person, .detail-field, .org-node, .draft-row, .admin-workspace {
       color: var(--ink);
       border-color: var(--line);
@@ -525,6 +538,9 @@
     .status-message.error { color: #ff8291 !important; }
     .feature-label { color: #ffe29a; background: #3a311c; }
     dialog { color: var(--ink); background: #111a2b; }
+    .button-secondary, .button-danger { color: #dce5f8; background: #172338; border-color: #34425d; }
+    .button-secondary:hover, .button-danger:hover { color: #fff; background: #202e47; border-color: #526585; }
+    .button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
     .dialog-content, .detail-body { background: #111a2b; }
     .detail-field { background: #172338; }
     .icon-button { color: var(--ink); background: #26334a; }
@@ -540,6 +556,8 @@
       .chooser-actions { grid-template-columns: 1fr; gap: .8rem; margin-top: 1.4rem; }
       .chooser-card { min-height: 155px; padding: 1.2rem; }
       .chooser-view { min-height: auto; padding: 1.5rem 0; }
+      .worker-access-grid { grid-template-columns: 1fr; }
+      .worker-request-row { align-items: flex-start; flex-direction: column; }
     }
   </style>
 </head>
@@ -548,7 +566,8 @@
   <header class="topbar">
     <div class="brand"><span class="brand-mark" aria-hidden="true">W</span><span>Wilcox Company</span></div>
     <div class="topbar-actions">
-      <button class="button button-secondary" id="adminButton" type="button">Acceso de administrador</button>
+      <button class="button button-primary" id="manageAllButton" type="button" hidden>Administrar todo</button>
+      <button class="button button-secondary" id="workerRequestsButton" type="button" hidden>Ver solicitudes</button>
       <button class="button button-secondary button-small" id="logoutButton" type="button" hidden>Cerrar sesión</button>
     </div>
   </header>
@@ -561,19 +580,71 @@
     <section class="route-view chooser-view" id="welcomeView" aria-labelledby="welcomeTitle">
       <div class="chooser-content">
         <span class="eyebrow">Bienvenido</span>
-        <h1 id="welcomeTitle">¿Qué deseas consultar?</h1>
-        <p>Elige una sección para continuar.</p>
-        <div class="chooser-actions">
-          <button class="chooser-card" type="button" data-route="home">
-            <span class="chooser-icon" aria-hidden="true">♙</span>
-            <strong>Personas</strong>
-            <span>Consulta el directorio del equipo.</span>
-          </button>
-          <button class="chooser-card" type="button" data-route="inventory">
-            <span class="chooser-icon" aria-hidden="true">▤</span>
-            <strong>Ver productos</strong>
-            <span>Consulta los productos disponibles en el inventario.</span>
-          </button>
+        <section id="entryModeChooser">
+          <h1 id="welcomeTitle">¿Cómo deseas entrar?</h1>
+          <p>Elige cómo quieres continuar.</p>
+          <div class="chooser-actions">
+            <button class="chooser-card" type="button" id="visitorEntryButton">
+              <span class="chooser-icon" aria-hidden="true">♙</span>
+              <strong>Visitante</strong>
+              <span>Consulta personas y productos.</span>
+            </button>
+            <button class="chooser-card" type="button" id="workerEntryButton">
+              <span class="chooser-icon" aria-hidden="true">▣</span>
+              <strong>Trabajador</strong>
+              <span>Inicia sesión o solicita acceso.</span>
+            </button>
+          </div>
+        </section>
+        <section id="visitorChooser" hidden>
+          <h1>¿Qué deseas consultar?</h1>
+          <p>Elige una sección para continuar.</p>
+          <div class="chooser-actions">
+            <button class="chooser-card" type="button" data-route="home">
+              <span class="chooser-icon" aria-hidden="true">♙</span>
+              <strong>Personas</strong>
+              <span>Consulta los perfiles profesionales.</span>
+            </button>
+            <button class="chooser-card" type="button" data-route="inventory">
+              <span class="chooser-icon" aria-hidden="true">▤</span>
+              <strong>Ver productos</strong>
+              <span>Consulta los productos disponibles.</span>
+            </button>
+          </div>
+          <button class="button button-secondary entry-back" type="button" data-entry-back>Volver</button>
+        </section>
+        <section id="workerAccess" hidden>
+          <h1>Acceso</h1>
+          <p>Inicia sesión con una cuenta aprobada o solicita acceso de trabajador.</p>
+          <div class="worker-access-grid">
+            <form class="generic-form" id="workerLoginForm">
+              <h2>Iniciar sesión</h2>
+              <p>Trabajadores aprobados y administradores ingresan desde este mismo acceso.</p>
+              <label>Correo<input name="email" type="email" autocomplete="username" required></label>
+              <label>Contraseña<input name="password" type="password" autocomplete="current-password" required></label>
+              <p class="status-message" id="workerLoginStatus" role="status"></p>
+              <button class="button button-primary" type="submit">Entrar</button>
+            </form>
+            <form class="generic-form" id="workerApplicationForm">
+              <h2>Solicitar acceso</h2>
+              <p>Solo solicitamos tu correo. Nunca pediremos ni mostraremos tu contraseña.</p>
+              <label>Tu correo electrónico<input name="email" type="email" autocomplete="email" required></label>
+              <p class="status-message" id="workerApplicationStatus" role="status"></p>
+              <button class="button button-secondary" type="submit">Enviar solicitud</button>
+            </form>
+            <details class="worker-register-details">
+              <summary>¿Ya te aprobaron? Crear tu cuenta</summary>
+              <form id="workerRegisterForm" class="generic-form worker-register-form">
+                <label>Correo aprobado<input name="email" type="email" autocomplete="email" required></label>
+                <label>Crea tu contraseña<input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+                <small>Debe tener al menos 12 caracteres. La contraseña la eliges tú y no se comparte con el administrador.</small>
+                <p class="status-message" id="workerRegisterStatus" role="status"></p>
+                <button class="button button-primary" type="submit">Crear cuenta de trabajador</button>
+              </form>
+            </details>
+          </div>
+          <button class="button button-secondary local-admin-entry" id="localAdminEntryButton" type="button" hidden>Acceso a administrador</button>
+          <button class="button button-secondary entry-back" type="button" data-entry-back>Volver</button>
         </div>
       </div>
     </section>
@@ -788,15 +859,57 @@
         </div>
         <div class="field field-full">
           <label for="companyName">Empresa u organización</label>
-          <input id="companyName" name="companyName" type="text" maxlength="120" placeholder="Ej. Wilcox Company" required>
+          <select id="companyName" name="companyName" data-option-field="company" required></select>
+          <div class="option-manager" data-option-manager="company" hidden>
+            <div class="category-controls">
+              <button class="button button-secondary button-small" type="button" data-option-open="company">Agregar empresa</button>
+              <button class="button button-secondary button-small" type="button" data-option-remove="company" disabled>Quitar empresa</button>
+            </div>
+            <div class="category-editor" data-option-editor="company" hidden>
+              <label for="companyOptionInput">Nueva empresa</label>
+              <input id="companyOptionInput" type="text" maxlength="120" placeholder="Escribe el nombre">
+              <div class="category-controls">
+                <button class="button button-primary button-small" type="button" data-option-save="company">Guardar empresa</button>
+                <button class="button button-secondary button-small" type="button" data-option-cancel="company">Cancelar</button>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="personPosition">Cargo</label>
-          <input id="personPosition" name="position" type="text" maxlength="100" placeholder="Ej. Gerente de ventas" required>
+          <select id="personPosition" name="position" data-option-field="position" required></select>
+          <div class="option-manager" data-option-manager="position" hidden>
+            <div class="category-controls">
+              <button class="button button-secondary button-small" type="button" data-option-open="position">Agregar cargo</button>
+              <button class="button button-secondary button-small" type="button" data-option-remove="position" disabled>Quitar cargo</button>
+            </div>
+            <div class="category-editor" data-option-editor="position" hidden>
+              <label for="positionOptionInput">Nuevo cargo</label>
+              <input id="positionOptionInput" type="text" maxlength="100" placeholder="Escribe el nombre">
+              <div class="category-controls">
+                <button class="button button-primary button-small" type="button" data-option-save="position">Guardar cargo</button>
+                <button class="button button-secondary button-small" type="button" data-option-cancel="position">Cancelar</button>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="personDepartment">Departamento o área</label>
-          <input id="personDepartment" name="department" type="text" maxlength="100" placeholder="Ej. Ventas">
+          <select id="personDepartment" name="department" data-option-field="department"></select>
+          <div class="option-manager" data-option-manager="department" hidden>
+            <div class="category-controls">
+              <button class="button button-secondary button-small" type="button" data-option-open="department">Agregar departamento</button>
+              <button class="button button-secondary button-small" type="button" data-option-remove="department" disabled>Quitar departamento</button>
+            </div>
+            <div class="category-editor" data-option-editor="department" hidden>
+              <label for="departmentOptionInput">Nuevo departamento</label>
+              <input id="departmentOptionInput" type="text" maxlength="100" placeholder="Escribe el nombre">
+              <div class="category-controls">
+                <button class="button button-primary button-small" type="button" data-option-save="department">Guardar departamento</button>
+                <button class="button button-secondary button-small" type="button" data-option-cancel="department">Cancelar</button>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="field">
           <label for="personWorkEmail">Correo de trabajo</label>
@@ -808,7 +921,25 @@
         </div>
         <div class="field">
           <label for="personLocation">Ciudad o sede</label>
-          <input id="personLocation" name="location" type="text" maxlength="120" placeholder="Ej. Ciudad de México">
+          <select id="personLocation" name="location" data-option-field="location"></select>
+          <div class="option-manager" data-option-manager="location" hidden>
+            <div class="category-controls">
+              <button class="button button-secondary button-small" type="button" data-option-open="location">Agregar ciudad</button>
+              <button class="button button-secondary button-small" type="button" data-option-remove="location" disabled>Quitar ciudad</button>
+            </div>
+            <div class="category-editor" data-option-editor="location" hidden>
+              <label for="locationOptionInput">Nueva ciudad o sede</label>
+              <input id="locationOptionInput" type="text" maxlength="120" placeholder="Escribe el nombre">
+              <div class="category-controls">
+                <button class="button button-primary button-small" type="button" data-option-save="location">Guardar ciudad</button>
+                <button class="button button-secondary button-small" type="button" data-option-cancel="location">Cancelar</button>
+              </div>
+            </div>
+          </div>
+          <div class="field">
+            <label for="personCountry">País</label>
+            <select id="personCountry" name="country"></select>
+          </div>
         </div>
         <div class="field">
           <label for="personEmploymentStatus">Estado</label>
@@ -820,7 +951,7 @@
         <div class="field field-full">
           <label for="personPhoto">Fotografía de perfil (opcional)</label>
           <input id="personPhoto" name="photoFile" type="file" accept="image/*">
-          <small>Máximo 500 KB.</small>
+          <small>No hay un límite de tamaño impuesto por la aplicación; el espacio disponible depende del navegador.</small>
           <label><input name="removePhoto" type="checkbox"> Quitar la fotografía guardada al editar</label>
         </div>
         <h3 class="form-section-title">Descripción</h3>
@@ -919,27 +1050,23 @@
   </main>
   </div>
 
-  <dialog id="adminDialog" aria-labelledby="adminDialogTitle">
+  <dialog id="localAdminDialog" aria-labelledby="localAdminDialogTitle">
     <div class="dialog-content">
       <div class="dialog-top">
         <div>
-          <h2 id="adminDialogTitle">Acceso de administrador</h2>
-          <p class="dialog-subtitle">Ingresa tus credenciales para administrar el sitio.</p>
+          <h2 id="localAdminDialogTitle">Acceso local de administrador</h2>
+          <p class="dialog-subtitle">Disponible solo al abrir el archivo local para hacer pruebas.</p>
         </div>
-        <button class="icon-button" type="button" data-close="adminDialog" aria-label="Cerrar">×</button>
+        <button class="icon-button" type="button" data-close="localAdminDialog" aria-label="Cerrar">×</button>
       </div>
-      <form class="dialog-form" id="adminLoginForm">
-        <div class="field" id="adminEmailField">
-          <label for="adminEmail">Correo de administrador</label>
-          <input id="adminEmail" type="email" autocomplete="username">
-        </div>
+      <form class="dialog-form" id="localAdminLoginForm">
         <div class="field">
-          <label for="adminCode" id="adminPasswordLabel">Contraseña de administrador</label>
-          <input id="adminCode" type="password" autocomplete="current-password" required>
+          <label for="localAdminCode">Código local</label>
+          <input id="localAdminCode" name="code" type="password" autocomplete="off" required>
         </div>
-        <p class="status-message" id="loginStatus" role="status" aria-live="polite"></p>
+        <p class="status-message" id="localAdminStatus" role="status" aria-live="polite"></p>
         <div class="dialog-actions">
-          <button class="button button-secondary" type="button" data-close="adminDialog">Cancelar</button>
+          <button class="button button-secondary" type="button" data-close="localAdminDialog">Cancelar</button>
           <button class="button button-primary" type="submit">Entrar</button>
         </div>
       </form>
@@ -1053,13 +1180,31 @@
     </div>
   </dialog>
 
+  <dialog id="workerRequestsDialog" aria-labelledby="workerRequestsTitle">
+    <div class="dialog-content">
+      <div class="dialog-top">
+        <div>
+          <h2 id="workerRequestsTitle">Solicitudes de trabajador</h2>
+          <p class="dialog-subtitle">Aprueba o rechaza solicitudes por correo. Las contraseñas nunca se solicitan ni se muestran.</p>
+        </div>
+        <button class="icon-button" type="button" data-close="workerRequestsDialog" aria-label="Cerrar">×</button>
+      </div>
+      <div class="worker-requests-list" id="workerRequestsList" aria-live="polite"></div>
+      <p class="status-message" id="workerRequestsStatus" role="status"></p>
+      <div class="dialog-actions">
+        <button class="button button-secondary" id="refreshWorkerRequestsButton" type="button">Actualizar</button>
+        <button class="button button-secondary" type="button" data-close="workerRequestsDialog">Cerrar</button>
+      </div>
+    </div>
+  </dialog>
+
   <script>
-    // This demo password is accepted only when the page is opened as a local file.
-    const ADMIN_CODE = "3";
+    const LOCAL_ADMIN_CODE = "3";
     const PUBLISH_CODE = "9078";
     const REMOTE_INVENTORY_ENABLED = location.protocol !== "file:";
     const PAYMENT_RETURN_ORDER_ID = new URLSearchParams(location.search).get("order_id");
     const STORAGE_KEY = "personas-directorio-v1";
+    const PROFILE_OPTIONS_STORAGE_KEY = "company-profile-options-v1";
     const CONNECTIONS_STORAGE_KEY = "personas-enlazadas-v1";
     const INVENTORY_STORAGE_KEY = "material-inventory-v1";
     const INVENTORY_CATEGORIES_STORAGE_KEY = "material-inventory-categories-v1";
@@ -1068,7 +1213,28 @@
     const REGION_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW XK".split(" ");
 
     const elements = {
-      adminButton: document.querySelector("#adminButton"),
+      visitorEntryButton: document.querySelector("#visitorEntryButton"),
+      workerEntryButton: document.querySelector("#workerEntryButton"),
+      localAdminEntryButton: document.querySelector("#localAdminEntryButton"),
+      localAdminDialog: document.querySelector("#localAdminDialog"),
+      localAdminLoginForm: document.querySelector("#localAdminLoginForm"),
+      localAdminCode: document.querySelector("#localAdminCode"),
+      localAdminStatus: document.querySelector("#localAdminStatus"),
+      manageAllButton: document.querySelector("#manageAllButton"),
+      workerRequestsButton: document.querySelector("#workerRequestsButton"),
+      entryModeChooser: document.querySelector("#entryModeChooser"),
+      visitorChooser: document.querySelector("#visitorChooser"),
+      workerAccess: document.querySelector("#workerAccess"),
+      workerLoginForm: document.querySelector("#workerLoginForm"),
+      workerApplicationForm: document.querySelector("#workerApplicationForm"),
+      workerRegisterForm: document.querySelector("#workerRegisterForm"),
+      workerLoginStatus: document.querySelector("#workerLoginStatus"),
+      workerApplicationStatus: document.querySelector("#workerApplicationStatus"),
+      workerRegisterStatus: document.querySelector("#workerRegisterStatus"),
+      workerRequestsList: document.querySelector("#workerRequestsList"),
+      workerRequestsStatus: document.querySelector("#workerRequestsStatus"),
+      refreshWorkerRequestsButton: document.querySelector("#refreshWorkerRequestsButton"),
+      workerRequestsDialog: document.querySelector("#workerRequestsDialog"),
       adminRouteButton: document.querySelector("#adminRouteButton"),
       adminSideNav: document.querySelector("#adminSideNav"),
       adminView: document.querySelector("#adminView"),
@@ -1097,6 +1263,7 @@
       closePanelButton: document.querySelector("#closePanelButton"),
       manageList: document.querySelector("#manageList"),
       personForm: document.querySelector("#personForm"),
+      personCountry: document.querySelector("#personCountry"),
       linkForm: document.querySelector("#linkForm"),
       inventoryForm: document.querySelector("#inventoryForm"),
       inventorySaleForm: document.querySelector("#inventorySaleForm"),
@@ -1143,13 +1310,6 @@
       drafts: document.querySelector("#drafts"),
       adminStatus: document.querySelector("#adminStatus"),
       validationToast: document.querySelector("#validationToast"),
-      adminDialog: document.querySelector("#adminDialog"),
-      adminLoginForm: document.querySelector("#adminLoginForm"),
-      adminEmail: document.querySelector("#adminEmail"),
-      adminEmailField: document.querySelector("#adminEmailField"),
-      adminCode: document.querySelector("#adminCode"),
-      adminPasswordLabel: document.querySelector("#adminPasswordLabel"),
-      loginStatus: document.querySelector("#loginStatus"),
       publishDialog: document.querySelector("#publishDialog"),
       publishForm: document.querySelector("#publishForm"),
       publishCode: document.querySelector("#publishCode"),
@@ -1166,6 +1326,7 @@
     };
 
     let people = loadPeople();
+    let profileOptions = loadProfileOptions();
     let personConnections = loadPersonConnections();
     let inventory = REMOTE_INVENTORY_ENABLED ? [] : loadInventory();
     let inventoryCategories = REMOTE_INVENTORY_ENABLED ? [] : loadInventoryCategories();
@@ -1174,7 +1335,10 @@
     let showComparisonRequirements = false;
     let validationToastTimer = null;
     let isAdmin = false;
+    let isWorker = false;
     let adminAccessToken = null;
+    let workerAccessToken = null;
+    let entryMode = "choose";
     let isAdminPanelOpen = false;
     let pendingPublishId = null;
     let activeAdminSection = null;
@@ -1191,6 +1355,7 @@
     let portalData = loadPortalData();
     let activityLog = loadActivityLog();
     let demoSuggestions = [];
+    const hasInventoryAccess = () => isAdmin || isWorker;
     if (people.length === 0) {
       people = [
         { id: "demo-person-elena", title: "Elena Torres", firstName: "Elena", lastName: "Torres", birthDate: "1985-06-14", nationality: "Mexicana", skinTone: "", eyeColor: "", height: "", info: "Profesional ficticia con experiencia en coordinación institucional.", published: true },
@@ -1267,7 +1432,8 @@
 
     async function apiRequest(path, options = {}) {
       const headers = { "Content-Type": "application/json" };
-      if (options.admin && adminAccessToken) headers.Authorization = `Bearer ${adminAccessToken}`;
+      const accessToken = options.token || (options.admin ? adminAccessToken || workerAccessToken : null);
+      if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
       const response = await fetch(path, {
         method: options.method || "GET",
         headers,
@@ -1285,17 +1451,94 @@
 
     async function loadRemoteInventory() {
       if (!REMOTE_INVENTORY_ENABLED) return;
-      const result = isAdmin && adminAccessToken
+      const result = hasInventoryAccess() && adminAccessToken
         ? await apiRequest("/api/admin-products", { admin: true })
+        : hasInventoryAccess() && workerAccessToken
+          ? await apiRequest("/api/admin-products", { token: workerAccessToken })
         : await apiRequest("/api/products");
-      const categoriesResult = isAdmin && adminAccessToken
+      const categoriesResult = hasInventoryAccess() && adminAccessToken
         ? await apiRequest("/api/admin-categories", { admin: true })
+        : hasInventoryAccess() && workerAccessToken
+          ? await apiRequest("/api/admin-categories", { token: workerAccessToken })
         : result;
       inventory = result.products || [];
       inventoryCategories = Array.isArray(categoriesResult.categories)
         ? categoriesResult.categories.map(category => typeof category === "string" ? category : category.name)
         : [];
       if (activeRoute === "inventory") render();
+    }
+
+    function renderWorkerRequests(requests) {
+      elements.workerRequestsList.replaceChildren();
+      if (!requests.length) {
+        const empty = document.createElement("p");
+        empty.className = "manage-empty";
+        empty.textContent = "No hay solicitudes todavía.";
+        elements.workerRequestsList.append(empty);
+        return;
+      }
+      for (const request of requests) {
+        const row = document.createElement("article");
+        row.className = "worker-request-row";
+        const identity = document.createElement("div");
+        identity.className = "worker-request-email";
+        identity.textContent = request.email;
+        const status = document.createElement("span");
+        status.className = "draft-label";
+        status.textContent = request.status === "pending" ? "Pendiente" : request.status === "approved" ? "Aprobada" : "Rechazada";
+        identity.append(document.createElement("br"), status);
+        row.append(identity);
+        if (request.status === "pending") {
+          const actions = document.createElement("div");
+          actions.className = "worker-request-actions";
+          for (const [action, label, style] of [
+            ["approve", "Aprobar", "button-primary"],
+            ["reject", "Rechazar", "button-danger"]
+          ]) {
+            const button = document.createElement("button");
+            button.className = `button ${style} button-small`;
+            button.type = "button";
+            button.textContent = label;
+            button.addEventListener("click", () => reviewWorkerRequest(request.email, action));
+            actions.append(button);
+          }
+          row.append(actions);
+        }
+        elements.workerRequestsList.append(row);
+      }
+    }
+
+    async function loadWorkerRequests() {
+      if (!isAdmin) return;
+      elements.refreshWorkerRequestsButton.disabled = true;
+      setStatus(elements.workerRequestsStatus, "Cargando solicitudes…", "");
+      try {
+        const result = await apiRequest("/api/worker-requests", { admin: true });
+        renderWorkerRequests(Array.isArray(result.requests) ? result.requests : []);
+        setStatus(elements.workerRequestsStatus, "", "");
+      } catch (error) {
+        setStatus(elements.workerRequestsStatus, error.message, "error");
+      } finally {
+        elements.refreshWorkerRequestsButton.disabled = false;
+      }
+    }
+
+    async function reviewWorkerRequest(email, action) {
+      if (!isAdmin) return;
+      const buttons = [...elements.workerRequestsList.querySelectorAll("button")];
+      buttons.forEach(button => { button.disabled = true; });
+      try {
+        await apiRequest("/api/worker-requests", {
+          method: "PATCH",
+          body: { email, action },
+          admin: true
+        });
+        await loadWorkerRequests();
+        setStatus(elements.workerRequestsStatus, action === "approve" ? "Solicitud aceptada." : "Solicitud rechazada.", "success");
+      } catch (error) {
+        setStatus(elements.workerRequestsStatus, error.message, "error");
+        buttons.forEach(button => { button.disabled = false; });
+      }
     }
 
     function availableStock(product) {
@@ -1352,14 +1595,131 @@
         return true;
       } catch (error) {
         console.error("No se pudieron guardar las fichas.", error);
-        setStatus(elements.adminStatus, "No se pudieron guardar los cambios en este navegador.", "error");
+        const quotaExceeded = error && (error.name === "QuotaExceededError" || error.code === 22 || error.code === 1014);
+        setStatus(elements.adminStatus, quotaExceeded
+          ? "El navegador se quedó sin espacio. La foto puede ser demasiado pesada; reduce su tamaño y vuelve a intentar. No se guardaron los cambios."
+          : "No se pudieron guardar los cambios en este navegador.", "error");
         return false;
       }
+    }
+
+    function loadProfileOptions() {
+      const groups = ["company", "position", "department", "location"];
+      try {
+        const saved = localStorage.getItem(PROFILE_OPTIONS_STORAGE_KEY);
+        const parsed = saved ? JSON.parse(saved) : {};
+        return Object.fromEntries(groups.map(group => [
+          group,
+          Array.isArray(parsed[group])
+            ? [...new Set(parsed[group].filter(value => typeof value === "string").map(value => value.trim()).filter(Boolean))]
+            : []
+        ]));
+      } catch (error) {
+        console.error("No se pudieron cargar las opciones de perfiles.", error);
+        return Object.fromEntries(groups.map(group => [group, []]));
+      }
+    }
+
+    function saveProfileOptions() {
+      try {
+        localStorage.setItem(PROFILE_OPTIONS_STORAGE_KEY, JSON.stringify(profileOptions));
+        return true;
+      } catch (error) {
+        console.error("No se pudieron guardar las opciones de perfiles.", error);
+        setStatus(elements.adminStatus, "No se pudieron guardar las opciones en este navegador.", "error");
+        return false;
+      }
+    }
+
+    function renderProfileOptionFields(person = null) {
+      const fields = {
+        company: elements.personForm.elements.companyName,
+        position: elements.personForm.elements.position,
+        department: elements.personForm.elements.department,
+        location: elements.personForm.elements.location
+      };
+      for (const [group, field] of Object.entries(fields)) {
+        const previousValue = field.value;
+        const personValue = person && typeof person[group === "company" ? "companyName" : group] === "string"
+          ? person[group === "company" ? "companyName" : group]
+          : "";
+        const selectedValue = previousValue || personValue;
+        field.replaceChildren(new Option(group === "company" || group === "position" ? "Selecciona una opción" : "Sin especificar", ""));
+        for (const value of profileOptions[group]) field.add(new Option(value, value));
+        if (selectedValue && !profileOptions[group].includes(selectedValue)) {
+          field.add(new Option(`${selectedValue} (actual)`, selectedValue));
+        }
+        field.value = selectedValue;
+        elements.personForm.querySelector(`[data-option-remove="${group}"]`).disabled =
+          !isAdmin || !profileOptions[group].includes(field.value);
+        const editor = elements.personForm.querySelector(`[data-option-editor="${group}"]`);
+        if (!isAdmin) editor.hidden = true;
+      }
+    }
+
+    function addProfileOption(group) {
+      if (!isAdmin || !Object.hasOwn(profileOptions, group)) return;
+      const input = elements.personForm.querySelector(`#${group}OptionInput`);
+      const value = input.value.trim();
+      if (!value) {
+        setStatus(elements.adminStatus, "Escribe el nombre de la opción antes de agregarla.", "error");
+        input.focus();
+        return;
+      }
+      if (profileOptions[group].some(option => option.toLocaleLowerCase("es") === value.toLocaleLowerCase("es"))) {
+        setStatus(elements.adminStatus, "Esa opción ya existe.", "error");
+        input.focus();
+        return;
+      }
+      profileOptions[group].push(value);
+      if (!saveProfileOptions()) {
+        profileOptions[group].pop();
+        return;
+      }
+      input.value = "";
+      renderProfileOptionFields();
+      const fieldName = group === "company" ? "companyName" : group;
+      elements.personForm.elements[fieldName].value = value;
+      elements.personForm.querySelector(`[data-option-editor="${group}"]`).hidden = true;
+      elements.personForm.querySelector(`[data-option-remove="${group}"]`).disabled = false;
+      setStatus(elements.adminStatus, "Opción agregada.", "success");
+    }
+
+    function removeProfileOption(group) {
+      if (!isAdmin || !Object.hasOwn(profileOptions, group)) return;
+      const fieldName = group === "company" ? "companyName" : group;
+      const field = elements.personForm.elements[fieldName];
+      const value = field.value;
+      const index = profileOptions[group].indexOf(value);
+      if (index < 0) return;
+      const removed = profileOptions[group].splice(index, 1)[0];
+      if (!saveProfileOptions()) {
+        profileOptions[group].splice(index, 0, removed);
+        return;
+      }
+      field.value = "";
+      renderProfileOptionFields(editingPersonId ? people.find(person => person.id === editingPersonId) : null);
+      setStatus(elements.adminStatus, "Opción eliminada del catálogo. Los perfiles ya guardados conservan su información.", "success");
     }
 
     function setStatus(element, message, type) {
       element.textContent = message;
       element.className = `status-message${type ? ` ${type}` : ""}`;
+    }
+
+    function populateCountryOptions(selectedCountry = elements.personCountry.value) {
+      const countryNames = new Intl.DisplayNames(["es"], { type: "region" });
+      const countries = REGION_CODES.map(code => ({ code, name: countryNames.of(code) }))
+        .filter(country => country.name && country.name !== country.code)
+        .sort((left, right) => left.name.localeCompare(right.name, "es"));
+      elements.personCountry.replaceChildren(new Option("Selecciona un país", ""));
+      for (const country of countries) {
+        elements.personCountry.add(new Option(country.name, country.name));
+      }
+      if (selectedCountry && !countries.some(country => country.name === selectedCountry)) {
+        elements.personCountry.add(new Option(`${selectedCountry} (actual)`, selectedCountry));
+      }
+      elements.personCountry.value = selectedCountry || "";
     }
 
     function showValidationToast(message) {
@@ -1485,7 +1845,7 @@
         status: elements.peopleStatusFilter.value
       };
       const published = people.filter(person => person.published)
-        .filter(person => !filters.search || `${person.title} ${person.companyName || ""} ${person.position || ""} ${person.department || ""} ${person.workEmail || ""} ${person.workPhone || ""} ${person.info} ${person.biography || ""}`.toLocaleLowerCase("es").includes(filters.search))
+        .filter(person => !filters.search || `${person.title} ${person.companyName || ""} ${person.position || ""} ${person.department || ""} ${person.workEmail || ""} ${person.workPhone || ""} ${person.location || ""} ${person.country || ""} ${person.info} ${person.biography || ""}`.toLocaleLowerCase("es").includes(filters.search))
         .filter(person => !filters.department || person.department === filters.department)
         .filter(person => !filters.job || person.position === filters.job)
         .filter(person => !filters.status || (person.employmentStatus || "Activo") === filters.status);
@@ -1523,9 +1883,8 @@
         elements.peopleGrid.append(card);
       }
 
-      elements.adminButton.textContent = isAdmin
-        ? isAdminPanelOpen ? "Administrador activo" : "Abrir panel de administrador"
-        : "Acceso de administrador";
+      elements.manageAllButton.hidden = !isAdmin;
+      elements.workerRequestsButton.hidden = !isAdmin;
       elements.adminRouteButton.hidden = true;
       elements.adminView.hidden = !isAdmin || activeRoute !== "admin";
       elements.routeViews.forEach(view => {
@@ -1534,7 +1893,11 @@
       elements.siteNav.querySelectorAll("[data-route]").forEach(button => {
         button.setAttribute("aria-current", button.dataset.route === activeRoute ? "page" : "false");
       });
-      document.querySelector("#logoutButton").hidden = !isAdmin;
+      document.querySelector("#logoutButton").hidden = !isAdmin && !isWorker;
+      elements.entryModeChooser.hidden = entryMode !== "choose";
+      elements.visitorChooser.hidden = entryMode !== "visitor";
+      elements.workerAccess.hidden = entryMode !== "worker";
+      elements.localAdminEntryButton.hidden = REMOTE_INVENTORY_ENABLED || entryMode !== "worker" || isAdmin;
       populateDirectoryFilters();
       renderPublicPages();
       document.querySelector(".brand > span:last-child").textContent =
@@ -1542,12 +1905,12 @@
       renderAdminModule();
       renderAdminWorkspace();
       const inventoryViewOpen = activeRoute === "inventory";
-      const inventoryManagementOpen = isAdmin && inventoryViewOpen && activeInventorySection === "home";
-      document.querySelector("#inventoryPageTitle").textContent = isAdmin ? "Inventario" : "Wilcox Company";
+      const inventoryManagementOpen = hasInventoryAccess() && inventoryViewOpen && activeInventorySection === "home";
+      document.querySelector("#inventoryPageTitle").textContent = hasInventoryAccess() ? "Inventario" : "Productos";
       elements.inventoryLandingActions.hidden = !inventoryManagementOpen;
-      elements.inventorySaleForm.hidden = !isAdmin || !inventoryViewOpen || activeInventorySection !== "sale";
-      elements.inventoryForm.hidden = !isAdmin || !inventoryViewOpen || activeInventorySection !== "product";
-      elements.inventoryManageList.hidden = !inventoryViewOpen || (isAdmin && activeInventorySection !== "home");
+      elements.inventorySaleForm.hidden = !hasInventoryAccess() || !inventoryViewOpen || activeInventorySection !== "sale";
+      elements.inventoryForm.hidden = !hasInventoryAccess() || !inventoryViewOpen || activeInventorySection !== "product";
+      elements.inventoryManageList.hidden = !inventoryViewOpen || (hasInventoryAccess() && activeInventorySection !== "home");
       if (inventoryViewOpen) renderInventory();
       elements.adminPanel.hidden = !isAdmin || !isAdminPanelOpen || activeRoute !== "home";
     }
@@ -1622,7 +1985,7 @@
         card.append(amount, caption);
         summary.append(card);
       }
-      if (isAdmin) elements.inventoryManageList.append(summary);
+      if (hasInventoryAccess()) elements.inventoryManageList.append(summary);
       const selectedProductId = elements.inventorySaleProduct.value;
       elements.inventorySaleProduct.replaceChildren(new Option("Selecciona un producto", ""));
       const productsInStock = inventory.filter(product => availableStock(product) > 0);
@@ -1640,7 +2003,7 @@
       if (inventory.length === 0) {
         const empty = document.createElement("p");
         empty.className = "manage-empty";
-        empty.textContent = isAdmin
+        empty.textContent = hasInventoryAccess()
           ? "Todavía no hay productos. Selecciona Agregar producto para empezar."
           : "Aún no hay productos disponibles.";
         elements.inventoryManageList.append(empty);
@@ -1658,13 +2021,13 @@
         title.textContent = product.name;
         const details = document.createElement("div");
         details.className = "draft-label";
-        const stockLabel = isAdmin ? `${product.stock} ${product.unit} en inventario` : `${availableStock(product)} ${product.unit} disponibles`;
-        details.textContent = `${product.category ? `${product.category} · ` : ""}${stockLabel}${isAdmin ? ` · ${product.sold || 0} vendidos · ${formatUsd(product.price_cents)}` : ` · ${formatUsd(product.price_cents)}`}`;
+        const stockLabel = hasInventoryAccess() ? `${product.stock} ${product.unit} en inventario` : `${availableStock(product)} ${product.unit} disponibles`;
+        details.textContent = `${product.category ? `${product.category} · ` : ""}${stockLabel}${hasInventoryAccess() ? ` · ${product.sold || 0} vendidos · ${formatUsd(product.price_cents)}` : ` · ${formatUsd(product.price_cents)}`}`;
         info.append(title, details);
 
         const actions = document.createElement("div");
         actions.className = "inventory-actions";
-        if (isAdmin) {
+        if (hasInventoryAccess()) {
           const editButton = document.createElement("button");
           editButton.className = "button button-secondary button-small";
           editButton.type = "button";
@@ -1678,7 +2041,7 @@
           deleteButton.dataset.inventoryDelete = product.id;
 
           actions.append(editButton, deleteButton);
-          actions.hidden = !isAdmin;
+          actions.hidden = !hasInventoryAccess();
         } else {
           const purchaseButton = document.createElement("button");
           purchaseButton.className = "button button-primary button-small";
@@ -1749,6 +2112,10 @@
       elements.connectionsManageList.hidden = true;
       elements.connectionPreview.hidden = true;
       elements.drafts.hidden = true;
+      elements.personForm.querySelectorAll("[data-option-manager]").forEach(manager => {
+        manager.hidden = !isAdmin;
+      });
+      renderProfileOptionFields(editingPersonId ? people.find(person => person.id === editingPersonId) : null);
 
       if (!activeAdminSection) return;
 
@@ -2131,14 +2498,14 @@
 
     function setRoute(route) {
       if (route === "admin" && !isAdmin) {
-        elements.adminCode.value = "";
-        setStatus(elements.loginStatus, "", "");
-        openDialog(elements.adminDialog);
-        elements.adminCode.focus();
+        activeRoute = "welcome";
+        entryMode = "choose";
+        render();
         return;
       }
       activeRoute = route;
-      if (route === "inventory") activeInventorySection = isAdmin ? "home" : "catalog";
+      if (route === "welcome") entryMode = "choose";
+      if (route === "inventory") activeInventorySection = hasInventoryAccess() ? "home" : "catalog";
       if (route === "admin") {
         isAdminPanelOpen = true;
         if (!activeAdminModule) activeAdminModule = "people";
@@ -2338,8 +2705,8 @@
       if (!person || !isAdmin) return;
       const values = Object.fromEntries(new FormData(form).entries());
       const photoFile = form.elements.photo.files[0];
-      if (photoFile && (!photoFile.type.startsWith("image/") || photoFile.size > 1024 * 1024)) {
-        setStatus(elements.adminStatus, "Selecciona una imagen válida de máximo 1 MB.", "error");
+      if (photoFile && !photoFile.type.startsWith("image/")) {
+        setStatus(elements.adminStatus, "Selecciona un archivo de imagen válido.", "error");
         return;
       }
       const applyValues = photoData => {
@@ -2387,6 +2754,7 @@
 
     elements.homeBackButton.addEventListener("click", () => {
       activeRoute = "welcome";
+      entryMode = "choose";
       isAdminPanelOpen = false;
       render();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2394,6 +2762,7 @@
 
     elements.inventoryBackButton.addEventListener("click", () => {
       activeRoute = "welcome";
+      entryMode = "choose";
       activeAdminSection = null;
       activeInventorySection = "home";
       isAdminPanelOpen = false;
@@ -2402,7 +2771,7 @@
     });
 
     elements.inventoryRegisterSaleButton.addEventListener("click", () => {
-      if (!isAdmin || activeRoute !== "inventory") return;
+      if (!hasInventoryAccess() || activeRoute !== "inventory") return;
       elements.inventorySaleForm.reset();
       activeInventorySection = "sale";
       render();
@@ -2410,7 +2779,7 @@
     });
 
     elements.inventoryAddProductButton.addEventListener("click", () => {
-      if (!isAdmin || activeRoute !== "inventory") return;
+      if (!hasInventoryAccess() || activeRoute !== "inventory") return;
       resetInventoryForm();
       activeInventorySection = "product";
       render();
@@ -2418,13 +2787,13 @@
     });
 
     elements.addInventoryCategoryButton.addEventListener("click", () => {
-      if (!isAdmin || activeRoute !== "inventory") return;
+      if (!hasInventoryAccess() || activeRoute !== "inventory") return;
       elements.inventoryCategoryEditor.hidden = false;
       elements.newInventoryCategory.focus();
     });
 
     elements.saveInventoryCategoryButton.addEventListener("click", async () => {
-      if (!isAdmin || activeRoute !== "inventory") return;
+      if (!hasInventoryAccess() || activeRoute !== "inventory") return;
       const category = elements.newInventoryCategory.value.trim();
       if (!category) {
         showValidationToast("Escribe el nombre de la categoría.");
@@ -2460,7 +2829,7 @@
     });
 
     elements.removeInventoryCategoryButton.addEventListener("click", async () => {
-      if (!isAdmin || activeRoute !== "inventory") return;
+      if (!hasInventoryAccess() || activeRoute !== "inventory") return;
       const category = elements.inventoryForm.elements.category.value;
       if (!category) return;
       if (inventory.some(product => product.category === category)) {
@@ -2796,6 +3165,7 @@
         ["Correo de trabajo", person.workEmail],
         ["Teléfono de trabajo", person.workPhone],
         ["Ciudad o sede", person.location],
+        ["País", person.country],
         ["Estado", person.employmentStatus],
         ["Perfil profesional", person.info || person.biography, true]
       ].filter(([, value]) => typeof value === "string" && value.trim());
@@ -2866,7 +3236,7 @@
     }
 
     async function confirmDeletePerson() {
-      if (!isAdmin) return;
+      if (pendingInventoryDeleteProductId ? !hasInventoryAccess() : !isAdmin) return;
       if (pendingConnectionDeleteId) {
         const connectionId = pendingConnectionDeleteId;
         const previousConnections = personConnections;
@@ -3006,22 +3376,155 @@
       }
     }
 
-    elements.adminButton.addEventListener("click", () => {
-      if (isAdmin) {
-        isAdminPanelOpen = !isAdminPanelOpen;
-        activeAdminModule = "people";
-        activeRoute = "home";
+    document.querySelectorAll("[data-entry-back]").forEach(button => {
+      button.addEventListener("click", () => {
+        entryMode = "choose";
+        activeRoute = "welcome";
         render();
-        if (isAdminPanelOpen) {
-          elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
+      });
+    });
+
+    elements.visitorEntryButton.addEventListener("click", () => {
+      entryMode = "visitor";
+      activeRoute = "welcome";
+      render();
+    });
+
+    elements.workerEntryButton.addEventListener("click", () => {
+      entryMode = "worker";
+      activeRoute = "welcome";
+      render();
+    });
+
+    elements.localAdminEntryButton.addEventListener("click", () => {
+      if (REMOTE_INVENTORY_ENABLED || isAdmin) return;
+      elements.localAdminLoginForm.reset();
+      setStatus(elements.localAdminStatus, "", "");
+      openDialog(elements.localAdminDialog);
+      elements.localAdminCode.focus();
+    });
+
+    elements.localAdminLoginForm.addEventListener("submit", event => {
+      event.preventDefault();
+      if (REMOTE_INVENTORY_ENABLED) {
+        setStatus(elements.localAdminStatus, "El acceso local no está disponible en el sitio publicado.", "error");
         return;
       }
-      elements.adminCode.value = "";
-      setStatus(elements.loginStatus, "", "");
-      openDialog(elements.adminDialog);
-      elements.adminCode.focus();
+      if (elements.localAdminCode.value !== LOCAL_ADMIN_CODE) {
+        setStatus(elements.localAdminStatus, "El código local no es correcto.", "error");
+        elements.localAdminCode.select();
+        return;
+      }
+      isAdmin = true;
+      isAdminPanelOpen = true;
+      activeAdminModule = "people";
+      activeAdminSection = null;
+      activeRoute = "home";
+      entryMode = "choose";
+      elements.localAdminLoginForm.reset();
+      closeDialog(elements.localAdminDialog);
+      recordActivity("Inicio de sesión", "Acceso local de administrador para pruebas");
+      render();
+      elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+
+    elements.workerLoginForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const formData = new FormData(elements.workerLoginForm);
+      const email = String(formData.get("email") || "").trim();
+      const password = String(formData.get("password") || "");
+      setStatus(elements.workerLoginStatus, "Verificando cuenta…", "");
+      try {
+        const session = await apiRequest("/api/access-login", {
+          method: "POST",
+          body: { email, password }
+        });
+        if (!session.user || !["admin", "worker"].includes(session.user.role)) {
+          throw new Error("El servidor no pudo verificar los permisos de esta cuenta.");
+        }
+        const adminLogin = session.user.role === "admin";
+        if (adminLogin) {
+          adminAccessToken = session.access_token;
+          isAdmin = true;
+          isAdminPanelOpen = true;
+          activeAdminModule = "people";
+          activeRoute = "home";
+        } else {
+          workerAccessToken = session.access_token;
+          isWorker = true;
+          activeRoute = "inventory";
+          activeInventorySection = "home";
+        }
+        try {
+          await loadRemoteInventory();
+        } catch (error) {
+          if (adminLogin) {
+            adminAccessToken = null;
+            isAdmin = false;
+          } else {
+            workerAccessToken = null;
+            isWorker = false;
+          }
+          throw error;
+        }
+        elements.workerLoginForm.reset();
+        setStatus(elements.workerLoginStatus, "", "");
+        entryMode = "choose";
+        if (isAdmin) recordActivity("Inicio de sesión", "Acceso al panel administrativo");
+        render();
+        if (isAdmin) elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (error) {
+        setStatus(elements.workerLoginStatus, error.message, "error");
+      }
+    });
+
+    elements.workerApplicationForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const email = String(new FormData(elements.workerApplicationForm).get("email") || "").trim();
+      setStatus(elements.workerApplicationStatus, "Enviando solicitud…", "");
+      try {
+        const result = await apiRequest("/api/worker-requests", {
+          method: "POST",
+          body: { email }
+        });
+        setStatus(elements.workerApplicationStatus, result.message || "Solicitud enviada para revisión.", "success");
+        elements.workerApplicationForm.reset();
+      } catch (error) {
+        setStatus(elements.workerApplicationStatus, error.message, "error");
+      }
+    });
+
+    elements.workerRegisterForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const formData = new FormData(elements.workerRegisterForm);
+      setStatus(elements.workerRegisterStatus, "Creando cuenta…", "");
+      try {
+        const result = await apiRequest("/api/worker-register", {
+          method: "POST",
+          body: {
+            email: String(formData.get("email") || "").trim(),
+            password: String(formData.get("password") || "")
+          }
+        });
+        elements.workerRegisterForm.reset();
+        setStatus(elements.workerRegisterStatus, result.message || "Cuenta creada correctamente.", "success");
+      } catch (error) {
+        setStatus(elements.workerRegisterStatus, error.message, "error");
+      }
+    });
+
+    elements.manageAllButton.addEventListener("click", () => {
+      if (!isAdmin) return;
+      setRoute("admin");
+    });
+
+    elements.workerRequestsButton.addEventListener("click", () => {
+      if (!isAdmin) return;
+      openDialog(elements.workerRequestsDialog);
+      loadWorkerRequests();
+    });
+
+    elements.refreshWorkerRequestsButton.addEventListener("click", loadWorkerRequests);
 
     document.querySelectorAll("[data-admin-section]").forEach(button => {
       button.addEventListener("click", () => selectAdminSection(button.dataset.adminSection));
@@ -3063,50 +3566,20 @@
       pendingPortalDelete = null;
     });
 
-    elements.adminLoginForm.addEventListener("submit", async event => {
-      event.preventDefault();
-      if (REMOTE_INVENTORY_ENABLED) {
-        try {
-          const session = await apiRequest("/api/admin-login", {
-            method: "POST",
-            body: { email: elements.adminEmail.value, password: elements.adminCode.value }
-          });
-          adminAccessToken = session.access_token;
-        } catch (error) {
-          setStatus(elements.loginStatus, error.message, "error");
-          elements.adminCode.select();
-          return;
-        }
-      } else if (elements.adminCode.value !== ADMIN_CODE) {
-        setStatus(elements.loginStatus, "El código local de demostración no es correcto.", "error");
-        elements.adminCode.select();
+    document.querySelector("#logoutButton").addEventListener("click", () => {
+      if (isAdmin) {
+        openDialog(elements.logoutDialog);
         return;
       }
-      isAdmin = true;
-      if (REMOTE_INVENTORY_ENABLED) {
-        try {
-          await loadRemoteInventory();
-        } catch (error) {
-          isAdmin = false;
-          adminAccessToken = null;
-          setStatus(elements.loginStatus, error.message, "error");
-          return;
-        }
+      if (isWorker) {
+        recordActivity("Cierre de sesión", "Cierre de la sesión de trabajador");
+        isWorker = false;
+        workerAccessToken = null;
+        activeRoute = "welcome";
+        activeInventorySection = "home";
+        entryMode = "choose";
+        render();
       }
-      isAdminPanelOpen = true;
-      activeRoute = "home";
-      activeAdminModule = "people";
-      activeAdminSection = null;
-      editingPersonId = null;
-      elements.adminLoginForm.reset();
-      closeDialog(elements.adminDialog);
-      recordActivity("Inicio de sesión", "Acceso al panel administrativo de demostración");
-      render();
-      elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-
-    document.querySelector("#logoutButton").addEventListener("click", () => {
-      if (isAdmin) openDialog(elements.logoutDialog);
     });
 
     document.querySelector("#cancelLogoutButton").addEventListener("click", () => {
@@ -3122,11 +3595,9 @@
       isAdminPanelOpen = false;
       activeAdminSection = null;
       editingPersonId = null;
-      activeRoute = "home";
+      activeRoute = "welcome";
+      entryMode = "choose";
       setStatus(elements.adminStatus, "", "");
-      if (REMOTE_INVENTORY_ENABLED && activeRoute === "inventory") {
-        loadRemoteInventory().catch(error => setStatus(elements.adminStatus, error.message, "error"));
-      }
       render();
     });
 
@@ -3144,8 +3615,8 @@
         return;
       }
       const photoFile = formData.get("photoFile");
-      if (photoFile && photoFile.size && (!photoFile.type.startsWith("image/") || photoFile.size > 500 * 1024)) {
-        setStatus(elements.adminStatus, "Elige una imagen válida de máximo 500 KB.", "error");
+      if (photoFile && photoFile.size && !photoFile.type.startsWith("image/")) {
+        setStatus(elements.adminStatus, "Elige un archivo de imagen válido.", "error");
         return;
       }
 
@@ -3212,9 +3683,48 @@
       }
     });
 
+    elements.personForm.addEventListener("click", event => {
+      const openButton = event.target.closest("[data-option-open]");
+      if (openButton) {
+        const group = openButton.dataset.optionOpen;
+        const editor = elements.personForm.querySelector(`[data-option-editor="${group}"]`);
+        if (!isAdmin || !editor) return;
+        editor.hidden = false;
+        elements.personForm.querySelector(`#${group}OptionInput`).focus();
+        return;
+      }
+      const saveButton = event.target.closest("[data-option-save]");
+      if (saveButton) {
+        addProfileOption(saveButton.dataset.optionSave);
+        return;
+      }
+      const cancelButton = event.target.closest("[data-option-cancel]");
+      if (cancelButton) {
+        const group = cancelButton.dataset.optionCancel;
+        elements.personForm.querySelector(`[data-option-editor="${group}"]`).hidden = true;
+        elements.personForm.querySelector(`#${group}OptionInput`).value = "";
+        return;
+      }
+      const removeButton = event.target.closest("[data-option-remove]");
+      if (removeButton) removeProfileOption(removeButton.dataset.optionRemove);
+    });
+    elements.personForm.addEventListener("keydown", event => {
+      if (event.key !== "Enter" || !event.target.matches("[id$='OptionInput']")) return;
+      event.preventDefault();
+      const group = event.target.id.replace(/OptionInput$/, "");
+      elements.personForm.querySelector(`[data-option-save="${group}"]`).click();
+    });
+    elements.personForm.addEventListener("change", event => {
+      const group = event.target.dataset.optionField;
+      if (!group || !Object.hasOwn(profileOptions, group)) return;
+      const fieldName = group === "company" ? "companyName" : group;
+      elements.personForm.querySelector(`[data-option-remove="${group}"]`).disabled =
+        !isAdmin || !profileOptions[group].includes(elements.personForm.elements[fieldName].value);
+    });
+
     elements.inventoryForm.addEventListener("submit", async event => {
       event.preventDefault();
-      if (!isAdmin || activeRoute !== "inventory") return;
+      if (!hasInventoryAccess() || activeRoute !== "inventory") return;
       const values = new FormData(elements.inventoryForm);
       const name = String(values.get("name") || "").trim();
       const category = String(values.get("category") || "").trim();
@@ -3297,7 +3807,7 @@
     elements.inventoryManageList.addEventListener("click", event => {
       const button = event.target.closest("button");
       if (!button || activeRoute !== "inventory") return;
-      if (button.dataset.purchaseProduct && !isAdmin) {
+      if (button.dataset.purchaseProduct && !hasInventoryAccess()) {
         const product = inventory.find(item => item.id === button.dataset.purchaseProduct);
         if (!product || availableStock(product) < 1) return;
         elements.purchaseForm.reset();
@@ -3309,7 +3819,7 @@
         elements.purchaseQuantity.focus();
         return;
       }
-      if (!isAdmin) return;
+      if (!hasInventoryAccess()) return;
       const product = inventory.find(item =>
         item.id === (button.dataset.inventoryEdit || button.dataset.inventoryDelete)
       );
@@ -3334,7 +3844,7 @@
 
     elements.inventorySaleForm.addEventListener("submit", async event => {
       event.preventDefault();
-      if (!isAdmin || activeRoute !== "inventory" || activeInventorySection !== "sale") return;
+      if (!hasInventoryAccess() || activeRoute !== "inventory" || activeInventorySection !== "sale") return;
       const productId = elements.inventorySaleProduct.value;
       const quantity = Number(elements.inventorySaleQuantityInput.value);
       const product = inventory.find(item => item.id === productId);
@@ -3384,7 +3894,7 @@
 
     elements.purchaseForm.addEventListener("submit", async event => {
       event.preventDefault();
-      if (isAdmin || activeRoute !== "inventory") return;
+      if (hasInventoryAccess() || activeRoute !== "inventory") return;
       const product = inventory.find(item => item.id === elements.purchaseProductId.value);
       const values = new FormData(elements.purchaseForm);
       const quantity = Number(values.get("quantity"));
@@ -3610,19 +4120,12 @@
       });
     }
 
-    elements.adminEmailField.hidden = !REMOTE_INVENTORY_ENABLED;
-    if (!REMOTE_INVENTORY_ENABLED) {
-      elements.adminPasswordLabel.textContent = "Código local de administrador";
-      document.querySelector("#adminDialog .dialog-subtitle").textContent = "Modo local de demostración.";
-    }
     updateConnectionRelationshipField();
+    populateCountryOptions();
     render();
-    if (REMOTE_INVENTORY_ENABLED) {
-      loadRemoteInventory().catch(error => setStatus(elements.adminStatus, error.message, "error"));
-    }
     if (/^[0-9a-f-]{36}$/i.test(PAYMENT_RETURN_ORDER_ID || "")) {
       history.replaceState(null, "", location.pathname);
-      updatePurchaseReturnStatus(PAYMENT_RETURN_ORDER_ID);
+      if (hasInventoryAccess()) updatePurchaseReturnStatus(PAYMENT_RETURN_ORDER_ID);
     }
   </script>
 </body>
