@@ -3435,9 +3435,9 @@
       const password = String(formData.get("password") || "");
       setStatus(elements.workerLoginStatus, "Verificando cuenta…", "");
       try {
-        const session = await apiRequest("/api/access-login", {
+        const session = await apiRequest("/api/auth", {
           method: "POST",
-          body: { email, password }
+          body: { action: "login", email, password }
         });
         if (!session.user || !["admin", "worker"].includes(session.user.role)) {
           throw new Error("El servidor no pudo verificar los permisos de esta cuenta.");
@@ -3499,9 +3499,10 @@
       const formData = new FormData(elements.workerRegisterForm);
       setStatus(elements.workerRegisterStatus, "Creando cuenta…", "");
       try {
-        const result = await apiRequest("/api/worker-register", {
+        const result = await apiRequest("/api/auth", {
           method: "POST",
           body: {
+            action: "register",
             email: String(formData.get("email") || "").trim(),
             password: String(formData.get("password") || "")
           }
