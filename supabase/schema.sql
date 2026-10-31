@@ -573,5 +573,7 @@ as $$
   end;
 $$;
 
+notify pgrst, 'reload schema';
+
 revoke all on function public.count_unread_notifications(text, text) from public, anon, authenticated;
 grant execute on function public.count_unread_notifications(text, text) to service_role;

@@ -10,7 +10,7 @@ Sitio estático con funciones de Vercel y catálogo/inventario en Supabase. Las 
 ## Configurar Supabase
 
 1. Crea un proyecto y abre **SQL Editor**.
-2. Ejecuta el contenido completo y actualizado de `supabase/schema.sql` cada vez que se agreguen o cambien tablas o funciones.
+2. Ejecuta el contenido completo y actualizado de `supabase/schema.sql` cada vez que se agreguen o cambien tablas o funciones. El script recarga al final el esquema de PostgREST para que Supabase detecte funciones nuevas, como `claim_worker_signup`.
 3. En **Authentication**, crea una cuenta de usuario para `jostin.rodriguez2c@gmail.com` con una contraseña fuerte que solo tú conozcas. No uses `3`: es demasiado débil y ya fue compartida en el chat. Si ya configuraste esa contraseña en Supabase, cámbiala antes de publicar.
 4. Agrega `ADMIN_EMAIL=jostin.rodriguez2c@gmail.com` a las variables de entorno de Vercel. El servidor permite iniciar sesión solo a ese correo y también exige que la cuenta esté en `admin_users`.
 5. En SQL Editor, registra ese usuario como administrador:

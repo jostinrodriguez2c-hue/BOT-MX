@@ -319,6 +319,14 @@ module.exports = async function handler(req, res) {
     const details = error.details && typeof error.details === "object" ? error.details : {};
     const databaseMessage = `${error.message || ""} ${details.message || ""} ${details.details || ""}`.toLowerCase();
     if (
+      ["PGRST202", "PGRST205", "42P01", "42703"].includes(details.code)
+      && ["worker_signup_attempts", "claim_worker_signup"].some(name => databaseMessage.includes(name))
+    ) {
+      return sendJson(res, 503, {
+        error: "Falta instalar el control de registro en Supabase. Ejecuta el archivo supabase/schema.sql completo en SQL Editor y vuelve a intentarlo."
+      });
+    }
+    if (
       ["PGRST202", "PGRST204", "PGRST205", "42P01", "42703"].includes(details.code)
       && ["worker_applications", "worker_users", "worker_roles", "activity_events", "worker_signup_attempts", "claim_worker_signup"].some(table => databaseMessage.includes(table))
     ) {
