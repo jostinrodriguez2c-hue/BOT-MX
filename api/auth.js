@@ -1,4 +1,13 @@
-const { body, getEnv, onlyMethod, publicError, sendJson, supabase, writeActivity } = require("../lib/api");
+const {
+  body,
+  getEnv,
+  onlyMethod,
+  publicError,
+  requireInventoryAccess,
+  sendJson,
+  supabase,
+  writeActivity
+} = require("../lib/api");
 
 async function login(email, password, res) {
   const response = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/token?grant_type=password`, {
@@ -160,6 +169,20 @@ async function updateWorkerPassword(recoveryToken, password, res) {
 }
 
 module.exports = async function handler(req, res) {
+  if (req.method === "GET") {
+    try {
+      const user = await requireInventoryAccess(req);
+      return sendJson(res, 200, {
+        user: {
+          email: user.email,
+          role: user.role,
+          permissions: user.permissions || []
+        }
+      });
+    } catch (error) {
+      return publicError(error, res);
+    }
+  }
   if (!onlyMethod(req, res, "POST")) return;
   try {
     const payload = body(req);

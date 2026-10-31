@@ -1332,6 +1332,8 @@
     const PORTAL_STORAGE_KEY = "portal-institucional-demo-v1";
     const ACTIVITY_STORAGE_KEY = "portal-institucional-activity-v1";
     const PERSONAL_NOTIFICATION_STORAGE_KEY = "wilcox-personal-notifications-v1";
+    const PAGE_SESSION_KEY = "wilcox-page-session-v1";
+    const AUTH_SESSION_KEY = "wilcox-auth-session-v1";
     const REGION_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW XK".split(" ");
 
     const elements = {
@@ -1513,6 +1515,8 @@
     let editingOrganizationCatalogId = null;
     let editingRoleId = null;
     let editingCollectionItem = null;
+    let restoredScrollY = 0;
+    let pageSessionReady = false;
     let portalData = loadPortalData();
     let activityLog = loadActivityLog();
     let notificationEvents = [];
@@ -1617,7 +1621,11 @@
       } catch {
         throw new Error("El servidor devolvió una respuesta no válida.");
       }
-      if (!response.ok) throw new Error(result.error || "No se pudo completar la solicitud.");
+      if (!response.ok) {
+        const error = new Error(result.error || "No se pudo completar la solicitud.");
+        error.status = response.status;
+        throw error;
+      }
       return result;
     }
 
@@ -2233,6 +2241,146 @@
       if (!isCustom) custom.value = "";
     }
 
+    function readSessionJson(key) {
+      try {
+        const value = sessionStorage.getItem(key);
+        return value ? JSON.parse(value) : null;
+      } catch (error) {
+        console.error(`No se pudo leer el estado de sesión (${key}).`, error);
+        return null;
+      }
+    }
+
+    function writeSessionJson(key, value) {
+      try {
+        if (value === null) sessionStorage.removeItem(key);
+        else sessionStorage.setItem(key, JSON.stringify(value));
+      } catch (error) {
+        console.error(`No se pudo guardar el estado de sesión (${key}).`, error);
+      }
+    }
+
+    function persistPageSession() {
+      if (!pageSessionReady) return;
+      const localAdmin = isAdmin && !adminAccessToken && !REMOTE_INVENTORY_ENABLED;
+      const accessToken = adminAccessToken || workerAccessToken;
+      if (localAdmin) {
+        writeSessionJson(AUTH_SESSION_KEY, { role: "local-admin" });
+      } else if (accessToken) {
+        writeSessionJson(AUTH_SESSION_KEY, {
+          role: isAdmin ? "admin" : "worker",
+          accessToken
+        });
+      } else {
+        writeSessionJson(AUTH_SESSION_KEY, null);
+      }
+      writeSessionJson(PAGE_SESSION_KEY, {
+        route: activeRoute,
+        entryMode,
+        inventorySection: activeInventorySection,
+        adminModule: activeAdminModule,
+        adminSection: activeAdminSection,
+        adminPanelOpen: isAdminPanelOpen,
+        directoryView: workerDirectoryView,
+        catalogKind: activeOrganizationCatalogKind,
+        scrollY: window.scrollY
+      });
+    }
+
+    async function restorePageSession() {
+      const state = readSessionJson(PAGE_SESSION_KEY);
+      const savedAuth = readSessionJson(AUTH_SESSION_KEY);
+      const recoveryLink = new URLSearchParams(location.hash.replace(/^#/, "")).get("type") === "recovery";
+      if (recoveryLink) {
+        pageSessionReady = true;
+        return;
+      }
+
+      if (savedAuth && savedAuth.role === "local-admin" && !REMOTE_INVENTORY_ENABLED) {
+        isAdmin = true;
+        notificationIdentity = "local-admin";
+      } else if (
+        savedAuth
+        && ["admin", "worker"].includes(savedAuth.role)
+        && typeof savedAuth.accessToken === "string"
+      ) {
+        try {
+          const result = await apiRequest("/api/auth", {
+            method: "GET",
+            token: savedAuth.accessToken
+          });
+          if (result.user && result.user.role === "admin") {
+            isAdmin = true;
+            adminAccessToken = savedAuth.accessToken;
+            notificationIdentity = String(result.user.email || "").toLowerCase();
+          } else if (result.user && result.user.role === "worker") {
+            isWorker = true;
+            workerAccessToken = savedAuth.accessToken;
+            workerPermissions = Array.isArray(result.user.permissions) ? result.user.permissions : [];
+            notificationIdentity = String(result.user.email || "").toLowerCase();
+          } else {
+            throw new Error("El servidor no pudo validar la sesión guardada.");
+          }
+        } catch (error) {
+          console.error("No se pudo restaurar la sesión anterior.", error);
+          if (error.status === 401 || error.status === 403) {
+            writeSessionJson(AUTH_SESSION_KEY, null);
+          }
+          entryMode = "worker";
+          activeRoute = "welcome";
+          pageSessionReady = true;
+          return;
+        }
+      }
+
+      const allowedRoute = ["welcome", "home", "inventory", "admin"];
+      const savedRoute = state && allowedRoute.includes(state.route) ? state.route : "welcome";
+      const isPrivilegedRoute = savedRoute === "admin";
+      if (isPrivilegedRoute && !isAdmin) {
+        activeRoute = "welcome";
+        entryMode = "worker";
+      } else if (isWorker && isPrivilegedRoute) {
+        activeRoute = "inventory";
+      } else {
+        activeRoute = savedRoute;
+        entryMode = state && ["choose", "visitor", "worker"].includes(state.entryMode)
+          ? state.entryMode
+          : "choose";
+      }
+
+      const adminModules = new Set([
+        ...[...elements.adminSideNav.querySelectorAll("[data-admin-module]")].map(button => button.dataset.adminModule),
+        "catalogs"
+      ]);
+      if (state && adminModules.has(state.adminModule)) activeAdminModule = state.adminModule;
+      if (state && ["company", "job", "department", "roles"].includes(state.catalogKind)) {
+        activeOrganizationCatalogKind = state.catalogKind;
+      }
+      if (state && ["team", "departments", "positions", "companies"].includes(state.directoryView)) {
+        workerDirectoryView = state.directoryView;
+      }
+      if (state && ["add", "delete", "edit", "link", "inventory", "connections"].includes(state.adminSection)) {
+        activeAdminSection = state.adminSection;
+      }
+      isAdminPanelOpen = isAdmin && Boolean(state && state.adminPanelOpen);
+
+      if (isWorker && activeRoute === "inventory") {
+        const allowedSections = new Set(["home"]);
+        if (canRegisterSales()) allowedSections.add("sale");
+        if (canManageProducts()) allowedSections.add("product");
+        if (canViewWorkerDirectory()) allowedSections.add("directory");
+        if (canViewOrganizationCatalogs()) allowedSections.add("catalogs");
+        activeInventorySection = state && allowedSections.has(state.inventorySection)
+          ? state.inventorySection
+          : "home";
+      } else if (activeRoute === "inventory") {
+        activeInventorySection = "catalog";
+      }
+
+      restoredScrollY = Number.isFinite(state && state.scrollY) ? Math.max(0, state.scrollY) : 0;
+      pageSessionReady = true;
+    }
+
     function render() {
       const filters = {
         search: elements.peopleSearch.value.trim().toLocaleLowerCase("es"),
@@ -2322,6 +2470,7 @@
       if (isWorker && activeRoute === "inventory" && activeInventorySection === "directory") renderWorkerDirectory();
       if (isWorker && activeRoute === "inventory" && activeInventorySection === "catalogs") renderWorkerCatalogs();
       elements.adminPanel.hidden = !isAdmin || !isAdminPanelOpen || activeRoute !== "home";
+      persistPageSession();
     }
 
     function loadInventoryCategories() {
@@ -5367,8 +5516,31 @@
         setStatus(elements.passwordResetStatus, "El enlace de recuperación no es válido. Solicita uno nuevo al administrador.", "error");
       }
     }
-    render();
-    refreshNotifications().catch(error => console.error("No se pudieron cargar las notificaciones.", error));
+    window.addEventListener("pagehide", persistPageSession);
+    (async () => {
+      await restorePageSession();
+      render();
+      if (activeRoute === "inventory" && REMOTE_INVENTORY_ENABLED && (isAdmin || canUseInventory())) {
+        await loadRemoteInventory().catch(error => setStatus(elements.adminStatus, error.message, "error"));
+      }
+      if (isWorker && activeRoute === "inventory" && activeInventorySection === "directory") {
+        await loadWorkerDirectory();
+      }
+      if (isWorker && activeRoute === "inventory" && activeInventorySection === "catalogs") {
+        await loadWorkerCatalogs();
+      }
+      if (restoredScrollY) {
+        window.requestAnimationFrame(() => window.scrollTo({ top: restoredScrollY, behavior: "auto" }));
+      }
+      refreshNotifications().catch(error => console.error("No se pudieron cargar las notificaciones.", error));
+    })().catch(error => {
+      console.error("No se pudo restaurar la página anterior.", error);
+      pageSessionReady = true;
+      render();
+      refreshNotifications().catch(notificationError =>
+        console.error("No se pudieron cargar las notificaciones.", notificationError)
+      );
+    });
     window.setInterval(() => {
       refreshNotifications(elements.notificationsDialog.open)
         .catch(error => console.error("No se pudieron actualizar las notificaciones.", error));
