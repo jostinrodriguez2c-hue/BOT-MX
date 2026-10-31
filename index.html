@@ -567,7 +567,7 @@
           <button class="chooser-card" type="button" data-route="home">
             <span class="chooser-icon" aria-hidden="true">♙</span>
             <strong>Personas</strong>
-            <span>Consulta el directorio y las fichas personales.</span>
+            <span>Consulta el directorio del equipo.</span>
           </button>
           <button class="chooser-card" type="button" data-route="inventory">
             <span class="chooser-icon" aria-hidden="true">▤</span>
@@ -582,8 +582,8 @@
     <div class="toolbar"><button class="button button-secondary" id="homeBackButton" type="button">Volver al inicio</button></div>
     <section class="intro" aria-labelledby="pageTitle">
       <span class="eyebrow">Directorio</span>
-      <h1 id="pageTitle">Directorio de personas</h1>
-      <p>Consulta las fichas personales que se han publicado.</p>
+      <h1 id="pageTitle">Directorio de equipo</h1>
+      <p>Consulta los perfiles profesionales publicados.</p>
     </section>
     <section class="page-view" aria-labelledby="peopleHeading">
       <div class="filter-bar" hidden>
@@ -595,14 +595,14 @@
         </select>
       </div>
       <div class="section-heading">
-        <h2 id="peopleHeading">Personas</h2>
+        <h2 id="peopleHeading">Equipo</h2>
         <span class="counter" id="peopleCount"></span>
       </div>
       <div class="grid" id="peopleGrid"></div>
       <div class="empty-state" id="emptyState" hidden>
         <div class="empty-icon" aria-hidden="true">◇</div>
-        <h3>Aún no hay personas publicadas</h3>
-        <p>Cuando un administrador publique una ficha, aparecerá aquí.</p>
+        <h3>Aún no hay integrantes publicados</h3>
+        <p>Cuando un administrador publique un perfil, aparecerá aquí.</p>
       </div>
     </section>
     <div id="homeStats" hidden></div>
@@ -709,7 +709,7 @@
 
     <section class="route-view page-view" id="aboutView" hidden>
       <h1>Acerca de la institución</h1>      <div class="info-card"><h2 id="aboutInstitutionName"></h2><p><strong>Misión</strong><br><span id="aboutMission"></span></p><p><strong>Visión</strong><br><span id="aboutVision"></span></p><p><strong>Valores</strong><br><span id="aboutValues"></span></p><p><strong>Historia</strong><br><span id="aboutHistory"></span></p><p><strong>Términos</strong><br><span id="aboutTerms"></span></p><p><strong>Privacidad</strong><br><span id="aboutPrivacy"></span></p></div>
-      <div class="info-card" style="margin-top:1rem"><h2>Ayuda y preguntas frecuentes</h2><div class="faq-list"><details><summary>¿Cómo consulto una ficha?</summary><p>Entra en Personas, busca el nombre y selecciona “Ver información personal”.</p></details><details><summary>¿Los datos son oficiales?</summary><p>No. Esta versión es una demostración con información ficticia y no representa una institución real.</p></details><details><summary>¿Cómo se guardan los cambios?</summary><p>Se guardan localmente en el navegador donde se abrió el archivo; no se sincronizan entre dispositivos.</p></details><details><summary>¿Cómo solicito ayuda?</summary><p>Usa el formulario de Contacto para guardar una sugerencia de demostración en este navegador.</p></details></div></div>
+      <div class="info-card" style="margin-top:1rem"><h2>Ayuda y preguntas frecuentes</h2><div class="faq-list"><details><summary>¿Cómo consulto un perfil?</summary><p>Entra en Personas, busca el integrante y selecciona “Ver perfil profesional”.</p></details><details><summary>¿Los datos son oficiales?</summary><p>No. Esta versión es una demostración con información ficticia y no representa una institución real.</p></details><details><summary>¿Cómo se guardan los cambios?</summary><p>Se guardan localmente en el navegador donde se abrió el archivo; no se sincronizan entre dispositivos.</p></details><details><summary>¿Cómo solicito ayuda?</summary><p>Usa el formulario de Contacto para guardar una sugerencia de demostración en este navegador.</p></details></div></div>
     </section>
 
     <section class="route-view page-view" id="contactView" hidden>
@@ -732,25 +732,25 @@
           <span class="admin-icon" aria-hidden="true">✦</span>
           <div>
           <h2 id="adminHeading">Panel de administrador</h2>
-          <p>Agrega, edita o elimina fichas personales.</p>
+          <p>Agrega, edita o elimina perfiles profesionales del equipo.</p>
           </div>
         </div>
       </div>
       <div class="admin-menu" id="adminMenu">
         <button class="admin-menu-button" type="button" data-admin-section="add">
           <span class="admin-menu-icon" aria-hidden="true">＋</span>
-          <strong>Agregar persona</strong>
-          <span>Crear una nueva ficha</span>
+          <strong>Agregar integrante</strong>
+          <span>Crear un perfil profesional</span>
         </button>
         <button class="admin-menu-button" type="button" data-admin-section="delete">
           <span class="admin-menu-icon" aria-hidden="true">−</span>
-          <strong>Eliminar persona</strong>
-          <span>Quitar una ficha guardada</span>
+          <strong>Eliminar integrante</strong>
+          <span>Quitar un perfil guardado</span>
         </button>
         <button class="admin-menu-button" type="button" data-admin-section="edit">
           <span class="admin-menu-icon" aria-hidden="true">✎</span>
-          <strong>Editar información</strong>
-          <span>Actualizar una ficha existente</span>
+          <strong>Editar perfil</strong>
+          <span>Actualizar un perfil existente</span>
         </button>
         <button class="admin-menu-button" type="button" data-admin-section="link">
           <span class="admin-menu-icon" aria-hidden="true">↔</span>
@@ -777,7 +777,7 @@
           </div>
         </div>
       <form class="admin-form" id="personForm">
-        <h3 class="form-section-title">Datos personales</h3>
+        <h3 class="form-section-title">Datos del integrante</h3>
         <div class="field">
           <label for="personFirstName">Nombre(s)</label>
           <input id="personFirstName" name="firstName" type="text" maxlength="60" placeholder="Ej. María Elena" autocomplete="given-name" required>
@@ -786,82 +786,49 @@
           <label for="personLastName">Apellido(s)</label>
           <input id="personLastName" name="lastName" type="text" maxlength="60" placeholder="Ej. García López" autocomplete="family-name" required>
         </div>
-        <div class="field">
-          <label for="personNickname">Apodo (opcional)</label>
-          <input id="personNickname" name="nickname" type="text" maxlength="60" placeholder="¿Cómo le dicen?">
+        <div class="field field-full">
+          <label for="companyName">Empresa u organización</label>
+          <input id="companyName" name="companyName" type="text" maxlength="120" placeholder="Ej. Wilcox Company" required>
         </div>
         <div class="field">
-          <label for="personBirthDate">Fecha de nacimiento</label>
-          <input id="personBirthDate" name="birthDate" type="date">
-          <small>Selecciona día, mes y año. Déjala vacía si no quieres guardarla.</small>
+          <label for="personPosition">Cargo</label>
+          <input id="personPosition" name="position" type="text" maxlength="100" placeholder="Ej. Gerente de ventas" required>
         </div>
         <div class="field">
-          <label for="personLocation">Ciudad o país (opcional)</label>
-          <input id="personLocation" name="location" type="text" maxlength="120">
+          <label for="personDepartment">Departamento o área</label>
+          <input id="personDepartment" name="department" type="text" maxlength="100" placeholder="Ej. Ventas">
+        </div>
+        <div class="field">
+          <label for="personWorkEmail">Correo de trabajo</label>
+          <input id="personWorkEmail" name="workEmail" type="email" maxlength="120" autocomplete="email" placeholder="nombre@empresa.com">
+        </div>
+        <div class="field">
+          <label for="personWorkPhone">Teléfono de trabajo</label>
+          <input id="personWorkPhone" name="workPhone" type="tel" maxlength="40" autocomplete="tel">
+        </div>
+        <div class="field">
+          <label for="personLocation">Ciudad o sede</label>
+          <input id="personLocation" name="location" type="text" maxlength="120" placeholder="Ej. Ciudad de México">
+        </div>
+        <div class="field">
+          <label for="personEmploymentStatus">Estado</label>
+          <select id="personEmploymentStatus" name="employmentStatus">
+            <option>Activo</option>
+            <option>Inactivo</option>
+          </select>
         </div>
         <div class="field field-full">
           <label for="personPhoto">Fotografía de perfil (opcional)</label>
           <input id="personPhoto" name="photoFile" type="file" accept="image/*">
-          <small>Usa una fotografía con permiso de tu amigo. Máximo 500 KB.</small>
+          <small>Máximo 500 KB.</small>
           <label><input name="removePhoto" type="checkbox"> Quitar la fotografía guardada al editar</label>
-        </div>
-        <h3 class="form-section-title">Gustos personales</h3>
-        <div class="field">
-          <label for="favoriteColor">Color favorito</label>
-          <input id="favoriteColor" name="favoriteColor" type="text" maxlength="80" list="colorSuggestions" placeholder="Escribe o elige una sugerencia">
-        </div>
-        <div class="field">
-          <label for="favoriteFood">Comida favorita</label>
-          <input id="favoriteFood" name="favoriteFood" type="text" maxlength="120" list="foodSuggestions" placeholder="Escribe o elige una sugerencia">
-        </div>
-        <div class="field">
-          <label for="favoriteMusic">Música favorita</label>
-          <input id="favoriteMusic" name="favoriteMusic" type="text" maxlength="120" list="musicSuggestions" placeholder="Escribe o elige un género">
-        </div>
-        <div class="field">
-          <label for="hobbies">Pasatiempos</label>
-          <input id="hobbies" name="hobbies" type="text" maxlength="200" list="hobbySuggestions" placeholder="Escribe o elige; separa varios con comas">
-        </div>
-        <h3 class="form-section-title">Historia de amistad</h3>
-        <div class="field">
-          <label for="friendshipDate">Fecha en que se conocieron</label>
-          <input id="friendshipDate" name="friendshipDate" type="date">
-          <small>Selecciona día, mes y año. No puede ser una fecha futura.</small>
-        </div>
-        <div class="field">
-          <label for="friendshipType">Tipo de amistad</label>
-          <select id="friendshipType" name="friendshipType">
-            <option value="">Selecciona una opción (opcional)</option>
-            <option>Mejores amigos</option>
-            <option>Amigos cercanos</option>
-            <option>Amigos de la infancia</option>
-            <option>Amigos de la escuela</option>
-            <option>Amigos de Internet</option>
-            <option>Amigos de videojuegos</option>
-            <option>Amigos de actividades o deportes</option>
-            <option>Conocidos</option>
-            <option>Otra</option>
-          </select>
-          <input id="friendshipTypeCustom" name="friendshipTypeCustom" type="text" maxlength="100" placeholder="Especifica otro tipo" hidden>
-        </div>
-        <div class="field field-full">
-          <label for="howMet">Cómo se conocieron</label>
-          <textarea id="howMet" name="howMet" maxlength="1000"></textarea>
-        </div>
-        <div class="field">
-          <label for="sharedMemories">Recuerdos y momentos especiales</label>
-          <textarea id="sharedMemories" name="sharedMemories" maxlength="1200"></textarea>
         </div>
         <h3 class="form-section-title">Descripción</h3>
         <div class="field field-full">
-          <label for="personInfo">Descripción personal o algún recuerdo</label>
-          <textarea id="personInfo" name="info" maxlength="1200" placeholder="Escribe algo que quieras recordar de esta persona..."></textarea>
+          <label for="personInfo">Perfil profesional</label>
+          <textarea id="personInfo" name="info" maxlength="1200" placeholder="Describe brevemente sus funciones o experiencia."></textarea>
         </div>
-        <datalist id="colorSuggestions"><option>Rojo</option><option>Naranja</option><option>Amarillo</option><option>Verde</option><option>Azul</option><option>Morado</option><option>Rosa</option><option>Negro</option><option>Blanco</option><option>Gris</option><option>Multicolor</option></datalist>
-        <datalist id="foodSuggestions"><option>Tacos</option><option>Pizza</option><option>Pasta</option><option>Sushi</option><option>Hamburguesa</option><option>Fruta</option><option>Comida casera</option></datalist>
-        <datalist id="musicSuggestions"><option>Pop</option><option>Rock</option><option>Reguetón</option><option>Regional</option><option>Rap</option><option>Hip-hop</option><option>Electrónica</option><option>Jazz</option><option>Clásica</option><option>K-pop</option><option>Salsa</option></datalist>
-        <datalist id="hobbySuggestions"><option>Leer</option><option>Dibujar</option><option>Cocinar</option><option>Escuchar música</option><option>Ver películas</option><option>Videojuegos</option><option>Fotografía</option><option>Viajar</option><option>Jardinería</option></datalist>
-          <p class="privacy-note">La ficha se mostrará a quienes puedan abrir esta página cuando la publiques. Incluye estos datos solo con autorización de la persona; no agregues números de identificación ni información privada innecesaria.</p>
+        <p class="privacy-note">El perfil podrá verlo quien tenga acceso a esta página cuando lo publiques. Comparte únicamente datos laborales autorizados.</p>
         <div class="form-actions">
           <button class="button button-primary" type="submit">Guardar como borrador</button>
           <span class="form-note">Para que todos puedan verla, después deberás publicarla con el código.</span>
@@ -1036,33 +1003,15 @@
       </div>
       <form class="dialog-form" id="purchaseForm">
         <input id="purchaseProductId" name="productId" type="hidden">
-        <div id="purchaseDetailsFields">
-          <div class="field">
-          <label for="purchaseCustomerName">Tu nombre</label>
-            <input id="purchaseCustomerName" name="customerName" type="text" maxlength="100" autocomplete="name" required>
-          </div>
-          <div class="field">
-            <label for="purchaseEmail">Correo para recibir tu código</label>
-            <input id="purchaseEmail" name="email" type="email" maxlength="254" autocomplete="email" required>
-          </div>
-          <div class="field">
-            <label for="purchaseContact">Teléfono de contacto</label>
-            <input id="purchaseContact" name="contact" type="tel" maxlength="120" autocomplete="tel" required>
-          </div>
-          <div class="field">
-            <label for="purchaseQuantity">Cantidad</label>
-            <input id="purchaseQuantity" name="quantity" type="number" min="1" step="1" value="1" required>
-          </div>
+        <div class="field">
+          <label for="purchaseQuantity">Cantidad</label>
+          <input id="purchaseQuantity" name="quantity" type="number" min="1" step="1" value="1" required>
         </div>
-        <div class="field" id="purchaseCodeField" hidden>
-          <label for="purchaseCode">Código de un solo uso</label>
-          <input id="purchaseCode" name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
-        </div>
-        <p class="form-note" id="purchaseFormNote">Te enviaremos un código único a tu correo. Después confirmarás y pagarás de forma segura en Mercado Pago; aquí no se guardan datos de tarjeta.</p>
+        <p class="form-note" id="purchaseFormNote">DEMO: no se cobra dinero ni se solicita tarjeta. Al confirmar, se registrará una compra simulada y se descontará esta cantidad del inventario de demostración.</p>
         <p class="status-message" id="purchaseStatus" role="status" aria-live="polite"></p>
         <div class="dialog-actions">
           <button class="button button-secondary" type="button" data-close="purchaseDialog">Cancelar</button>
-          <button class="button button-primary" id="purchaseContinueButton" type="submit">Enviar código</button>
+          <button class="button button-primary" id="purchaseContinueButton" type="submit">Confirmar compra simulada</button>
         </div>
       </form>
     </div>
@@ -1174,12 +1123,6 @@
       purchaseProductSummary: document.querySelector("#purchaseProductSummary"),
       purchaseQuantity: document.querySelector("#purchaseQuantity"),
       purchaseStatus: document.querySelector("#purchaseStatus"),
-      purchaseCustomerName: document.querySelector("#purchaseCustomerName"),
-      purchaseEmail: document.querySelector("#purchaseEmail"),
-      purchaseContact: document.querySelector("#purchaseContact"),
-      purchaseCode: document.querySelector("#purchaseCode"),
-      purchaseCodeField: document.querySelector("#purchaseCodeField"),
-      purchaseDetailsFields: document.querySelector("#purchaseDetailsFields"),
       purchaseContinueButton: document.querySelector("#purchaseContinueButton"),
       purchaseFormNote: document.querySelector("#purchaseFormNote"),
       purchaseReturnStatus: document.querySelector("#purchaseReturnStatus"),
@@ -1232,8 +1175,6 @@
     let validationToastTimer = null;
     let isAdmin = false;
     let adminAccessToken = null;
-    let purchaseOrderId = null;
-    let purchaseStage = "details";
     let isAdminPanelOpen = false;
     let pendingPublishId = null;
     let activeAdminSection = null;
@@ -1527,15 +1468,6 @@
       if (dialog.open) dialog.close();
     }
 
-    function updateFriendshipTypeField() {
-      const select = elements.personForm.elements.friendshipType;
-      const custom = elements.personForm.elements.friendshipTypeCustom;
-      const isCustom = select.value === "Otra";
-      custom.hidden = !isCustom;
-      custom.required = isCustom;
-      if (!isCustom) custom.value = "";
-    }
-
     function updateConnectionRelationshipField() {
       const select = elements.linkForm.elements.relationship;
       const custom = elements.linkForm.elements.relationshipCustom;
@@ -1543,17 +1475,6 @@
       custom.hidden = !isCustom;
       custom.required = isCustom;
       if (!isCustom) custom.value = "";
-    }
-
-    function setDateLimits() {
-      const now = new Date();
-      const today = [
-        now.getFullYear(),
-        String(now.getMonth() + 1).padStart(2, "0"),
-        String(now.getDate()).padStart(2, "0")
-      ].join("-");
-      elements.personForm.elements.birthDate.max = today;
-      elements.personForm.elements.friendshipDate.max = today;
     }
 
     function render() {
@@ -1564,7 +1485,7 @@
         status: elements.peopleStatusFilter.value
       };
       const published = people.filter(person => person.published)
-        .filter(person => !filters.search || `${person.title} ${person.info} ${person.biography || ""}`.toLocaleLowerCase("es").includes(filters.search))
+        .filter(person => !filters.search || `${person.title} ${person.companyName || ""} ${person.position || ""} ${person.department || ""} ${person.workEmail || ""} ${person.workPhone || ""} ${person.info} ${person.biography || ""}`.toLocaleLowerCase("es").includes(filters.search))
         .filter(person => !filters.department || person.department === filters.department)
         .filter(person => !filters.job || person.position === filters.job)
         .filter(person => !filters.status || (person.employmentStatus || "Activo") === filters.status);
@@ -1595,7 +1516,7 @@
         const button = document.createElement("button");
         button.className = "button button-primary";
         button.type = "button";
-        button.textContent = "Ver información personal";
+        button.textContent = "Ver perfil profesional";
         button.addEventListener("click", () => showDetails(person));
 
         card.append(title, button);
@@ -1832,7 +1753,7 @@
       if (!activeAdminSection) return;
 
       if (activeAdminSection === "add") {
-        elements.workspaceTitle.textContent = "Agregar persona";
+        elements.workspaceTitle.textContent = "Agregar integrante";
         elements.personForm.hidden = false;
         elements.drafts.hidden = false;
         elements.personForm.querySelector('button[type="submit"]').textContent = "Guardar como borrador";
@@ -1878,7 +1799,7 @@
         return;
       }
 
-      elements.workspaceTitle.textContent = activeAdminSection === "edit" ? "Editar información" : "Eliminar persona";
+      elements.workspaceTitle.textContent = activeAdminSection === "edit" ? "Editar perfil profesional" : "Eliminar integrante";
       elements.manageList.hidden = false;
       renderManageList(activeAdminSection);
     }
@@ -2750,7 +2671,7 @@
         title.textContent = person.title;
         const label = document.createElement("div");
         label.className = "draft-label";
-        label.textContent = person.nationality || person.subtitle || "Ficha personal";
+        label.textContent = person.position || person.department || person.companyName || "Perfil profesional";
         description.append(title, label);
 
         const actions = document.createElement("div");
@@ -2824,7 +2745,6 @@
       elements.personForm.reset();
       elements.linkForm.reset();
       resetInventoryForm();
-      updateFriendshipTypeField();
       updateConnectionRelationshipField();
       setStatus(elements.adminStatus, "", "");
       if (section === "inventory") {
@@ -2844,20 +2764,13 @@
       elements.personForm.reset();
       editingPersonId = person.id;
       for (const field of elements.personForm.elements) {
-        if (!field.name || field.type === "file" || field.name === "friendshipTypeCustom") continue;
+        if (!field.name || field.type === "file") continue;
         if (field.type === "checkbox") {
           field.checked = field.name === "removePhoto" ? false : Boolean(person[field.name]);
         } else if (Object.prototype.hasOwnProperty.call(person, field.name)) {
           field.value = person[field.name] || "";
         }
       }
-      const friendshipType = elements.personForm.elements.friendshipType;
-      const friendshipTypeCustom = elements.personForm.elements.friendshipTypeCustom;
-      if (person.friendshipType && ![...friendshipType.options].some(option => option.value === person.friendshipType)) {
-        friendshipType.value = "Otra";
-        friendshipTypeCustom.value = person.friendshipType;
-      }
-      updateFriendshipTypeField();
       elements.personForm.elements.firstName.value = person.firstName || (person.title || "").split(/\s+/)[0] || "";
       elements.personForm.elements.lastName.value = person.lastName || (person.title || "").split(/\s+/).slice(1).join(" ");
       renderAdminWorkspace();
@@ -2865,7 +2778,7 @@
 
     function showDetails(person) {
       elements.detailTitle.textContent = person.title;
-      elements.detailSubtitle.textContent = person.subtitle || "Información personal";
+      elements.detailSubtitle.textContent = person.position || person.companyName || "Perfil profesional";
       const nameParts = (person.firstName || person.title).trim().split(/\s+/).filter(Boolean);
       elements.detailAvatar.textContent = nameParts.slice(0, 2).map(part => part.charAt(0).toLocaleUpperCase("es")).join("");
       elements.detailAvatar.style.backgroundImage = person.photo ? `url("${person.photo}")` : "";
@@ -2877,18 +2790,14 @@
       const details = [
         ["Nombre(s)", person.firstName],
         ["Apellido(s)", person.lastName],
-        ["Apodo", person.nickname],
-        ["Fecha de nacimiento", formatBirthDate(person.birthDate)],
-        ["Ciudad o país", person.location],
-        ["Color favorito", person.favoriteColor],
-        ["Comida favorita", person.favoriteFood],
-        ["Música favorita", person.favoriteMusic],
-        ["Pasatiempos", person.hobbies],
-        ["Fecha en que se conocieron", formatBirthDate(person.friendshipDate)],
-        ["Tipo de amistad", person.friendshipType],
-        ["Cómo se conocieron", person.howMet],
-        ["Recuerdos y momentos especiales", person.sharedMemories],
-        ["Descripción personal", person.info || person.biography, true]
+        ["Empresa u organización", person.companyName],
+        ["Cargo", person.position],
+        ["Departamento o área", person.department],
+        ["Correo de trabajo", person.workEmail],
+        ["Teléfono de trabajo", person.workPhone],
+        ["Ciudad o sede", person.location],
+        ["Estado", person.employmentStatus],
+        ["Perfil profesional", person.info || person.biography, true]
       ].filter(([, value]) => typeof value === "string" && value.trim());
 
       if (details.length === 0) {
@@ -3234,21 +3143,6 @@
         setStatus(elements.adminStatus, "Escribe el nombre y el apellido antes de guardar.", "error");
         return;
       }
-      const today = new Date();
-      const todayValue = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-      const birthDate = String(formData.get("birthDate") || "");
-      const friendshipDate = String(formData.get("friendshipDate") || "");
-      if (birthDate && birthDate > todayValue) {
-        setStatus(elements.adminStatus, "La fecha de nacimiento no puede ser futura.", "error");
-        elements.personForm.elements.birthDate.focus();
-        return;
-      }
-      if (friendshipDate && friendshipDate > todayValue) {
-        setStatus(elements.adminStatus, "La fecha en que se conocieron no puede ser futura.", "error");
-        elements.personForm.elements.friendshipDate.focus();
-        return;
-      }
-
       const photoFile = formData.get("photoFile");
       if (photoFile && photoFile.size && (!photoFile.type.startsWith("image/") || photoFile.size > 500 * 1024)) {
         setStatus(elements.adminStatus, "Elige una imagen válida de máximo 500 KB.", "error");
@@ -3259,12 +3153,9 @@
         const now = new Date().toISOString();
         const updatedFields = { title, firstName, lastName, info, updatedAt: now };
         for (const [name, value] of formData.entries()) {
-          if (name !== "photoFile" && name !== "removePhoto" && name !== "friendshipTypeCustom" && typeof value === "string") {
+          if (name !== "photoFile" && name !== "removePhoto" && typeof value === "string") {
             updatedFields[name] = value.trim();
           }
-        }
-        if (formData.get("friendshipType") === "Otra") {
-          updatedFields.friendshipType = String(formData.get("friendshipTypeCustom") || "").trim();
         }
         if (photoData) updatedFields.photo = photoData;
         if (formData.get("removePhoto") === "on" && !photoData) updatedFields.photo = "";
@@ -3300,9 +3191,8 @@
         people.unshift(person);
         if (savePeople()) {
           elements.personForm.reset();
-          updateFriendshipTypeField();
-          recordActivity("Registro de persona", title);
-          setStatus(elements.adminStatus, "Ficha guardada como borrador. Usa Publicar y escribe el código para mostrarla.", "success");
+          recordActivity("Registro de integrante", title);
+          setStatus(elements.adminStatus, "Perfil guardado como borrador. Usa Publicar y escribe el código para mostrarlo.", "success");
           render();
         } else {
           people.shift();
@@ -3321,8 +3211,6 @@
         saveProfile("");
       }
     });
-
-    elements.personForm.elements.friendshipType.addEventListener("change", updateFriendshipTypeField);
 
     elements.inventoryForm.addEventListener("submit", async event => {
       event.preventDefault();
@@ -3413,20 +3301,12 @@
         const product = inventory.find(item => item.id === button.dataset.purchaseProduct);
         if (!product || availableStock(product) < 1) return;
         elements.purchaseForm.reset();
-        purchaseStage = "details";
-        purchaseOrderId = null;
-        elements.purchaseDetailsFields.hidden = false;
-        elements.purchaseDetailsFields.querySelectorAll("input").forEach(input => { input.disabled = false; });
-        elements.purchaseCodeField.hidden = true;
-        elements.purchaseCode.required = false;
-        elements.purchaseContinueButton.textContent = "Enviar código";
-        elements.purchaseFormNote.textContent = "Te enviaremos un código único a tu correo. Después confirmarás y pagarás de forma segura en Mercado Pago; aquí no se guardan datos de tarjeta.";
         elements.purchaseProductId.value = product.id;
         elements.purchaseProductSummary.textContent = `${product.name} · ${formatUsd(product.price_cents)} · ${availableStock(product)} ${product.unit} disponibles`;
         elements.purchaseQuantity.max = String(availableStock(product));
         setStatus(elements.purchaseStatus, "", "");
         openDialog(elements.purchaseDialog);
-        elements.purchaseCustomerName.focus();
+        elements.purchaseQuantity.focus();
         return;
       }
       if (!isAdmin) return;
@@ -3505,64 +3385,38 @@
     elements.purchaseForm.addEventListener("submit", async event => {
       event.preventDefault();
       if (isAdmin || activeRoute !== "inventory") return;
-      if (!REMOTE_INVENTORY_ENABLED) {
-        setStatus(elements.purchaseStatus, "La verificación de correo y el pago seguro se activan al publicar el sitio con Vercel y configurar las cuentas indicadas.", "error");
-        return;
-      }
       const product = inventory.find(item => item.id === elements.purchaseProductId.value);
       const values = new FormData(elements.purchaseForm);
       const quantity = Number(values.get("quantity"));
-      if (purchaseStage === "details") {
-        const customerName = String(values.get("customerName") || "").trim();
-        const email = String(values.get("email") || "").trim();
-        const contact = String(values.get("contact") || "").trim();
-        if (!product || !customerName || !email || !contact || !Number.isSafeInteger(quantity)
-          || quantity < 1 || quantity > availableStock(product)) {
-          setStatus(elements.purchaseStatus, "Revisa tus datos y confirma que la cantidad no supere las existencias disponibles.", "error");
-          return;
-        }
-        elements.purchaseContinueButton.disabled = true;
-        try {
-          const result = await apiRequest("/api/checkout/request-code", {
-            method: "POST",
-            body: {
-              product_id: product.id,
-              quantity,
-              customer_name: customerName,
-              email,
-              contact
-            }
-          });
-          purchaseOrderId = result.order_id;
-          purchaseStage = "verify";
-          elements.purchaseDetailsFields.hidden = true;
-          elements.purchaseDetailsFields.querySelectorAll("input").forEach(input => { input.disabled = true; });
-          elements.purchaseCodeField.hidden = false;
-          elements.purchaseCode.required = true;
-          elements.purchaseContinueButton.textContent = "Verificar código y pagar";
-          setStatus(elements.purchaseStatus, result.message, "success");
-          elements.purchaseCode.focus();
-        } catch (error) {
-          setStatus(elements.purchaseStatus, error.message, "error");
-        } finally {
-          elements.purchaseContinueButton.disabled = false;
-        }
-        return;
-      }
-
-      const code = String(values.get("code") || "").trim();
-      if (!purchaseOrderId || !/^\d{6}$/.test(code)) {
-        setStatus(elements.purchaseStatus, "Escribe el código de seis dígitos que recibiste por correo.", "error");
+      if (!product || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > availableStock(product)) {
+        setStatus(elements.purchaseStatus, "La cantidad no es válida o supera las existencias disponibles.", "error");
         return;
       }
       elements.purchaseContinueButton.disabled = true;
       try {
-        const result = await apiRequest("/api/checkout/verify-code", {
-          method: "POST",
-          body: { order_id: purchaseOrderId, code }
-        });
-        setStatus(elements.purchaseStatus, "Código verificado. Abriendo el pago seguro…", "success");
-        window.location.assign(result.checkout_url);
+        if (REMOTE_INVENTORY_ENABLED) {
+          await apiRequest("/api/demo-purchase", {
+            method: "POST",
+            body: { product_id: product.id, quantity }
+          });
+          await loadRemoteInventory();
+        } else {
+          const previousInventory = inventory;
+          inventory = inventory.map(item => item.id === product.id
+            ? { ...item, stock: item.stock - quantity, sold: item.sold + quantity }
+            : item
+          );
+          if (!saveInventory()) {
+            inventory = previousInventory;
+            return;
+          }
+          render();
+        }
+        setStatus(
+          elements.purchaseStatus,
+          `Compra simulada registrada: ${quantity} ${product.unit} de ${product.name}. No se realizó ningún cobro; el inventario de demostración se actualizó.`,
+          "success"
+        );
       } catch (error) {
         setStatus(elements.purchaseStatus, error.message, "error");
       } finally {
@@ -3761,8 +3615,6 @@
       elements.adminPasswordLabel.textContent = "Código local de administrador";
       document.querySelector("#adminDialog .dialog-subtitle").textContent = "Modo local de demostración.";
     }
-    setDateLimits();
-    updateFriendshipTypeField();
     updateConnectionRelationshipField();
     render();
     if (REMOTE_INVENTORY_ENABLED) {

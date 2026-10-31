@@ -293,15 +293,72 @@ begin
 end;
 $$;
 
+create or replace function public.register_demo_purchase(
+  p_product_id uuid,
+  p_quantity integer,
+  p_ip_hash text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_product public.products%rowtype;
+  v_rate public.purchase_rate_limits%rowtype;
+begin
+  if p_quantity < 1 or p_quantity > 1000 or char_length(p_ip_hash) <> 64 then
+    raise exception 'invalid_demo_purchase';
+  end if;
+
+  select * into v_product from public.products
+    where id = p_product_id and active = true for update;
+  if not found or v_product.stock - v_product.reserved < p_quantity then
+    raise exception 'product_unavailable';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('demo:' || p_ip_hash));
+  select * into v_rate from public.purchase_rate_limits
+    where bucket = 'ip' and key = p_ip_hash for update;
+  if found then
+    if now() - v_rate.last_sent_at < interval '2 seconds' then
+      raise exception 'demo_rate_limited';
+    end if;
+    if now() - v_rate.window_started_at >= interval '1 hour' then
+      update public.purchase_rate_limits set
+        window_started_at = now(), request_count = 1, last_sent_at = now()
+        where bucket = 'ip' and key = p_ip_hash;
+    elsif v_rate.request_count >= 30 then
+      raise exception 'demo_rate_limited';
+    else
+      update public.purchase_rate_limits set
+        request_count = request_count + 1, last_sent_at = now()
+        where bucket = 'ip' and key = p_ip_hash;
+    end if;
+  else
+    insert into public.purchase_rate_limits (bucket, key, window_started_at, request_count, last_sent_at)
+      values ('ip', p_ip_hash, now(), 1, now());
+  end if;
+
+  update public.products set
+    stock = stock - p_quantity,
+    sold = sold + p_quantity,
+    updated_at = now()
+    where id = p_product_id and active = true and stock - reserved >= p_quantity;
+  if not found then raise exception 'product_unavailable'; end if;
+end;
+$$;
+
 revoke all on function public.create_purchase_request(uuid, integer, text, text, text, text, timestamptz, text) from public, anon, authenticated;
 revoke all on function public.verify_purchase_code(uuid, text) from public, anon, authenticated;
 revoke all on function public.release_expired_orders() from public, anon, authenticated;
 revoke all on function public.cancel_purchase_order(uuid) from public, anon, authenticated;
 revoke all on function public.confirm_paid_purchase(uuid, text, integer) from public, anon, authenticated;
 revoke all on function public.register_manual_sale(uuid, integer) from public, anon, authenticated;
+revoke all on function public.register_demo_purchase(uuid, integer, text) from public, anon, authenticated;
 grant execute on function public.create_purchase_request(uuid, integer, text, text, text, text, timestamptz, text) to service_role;
 grant execute on function public.verify_purchase_code(uuid, text) to service_role;
 grant execute on function public.release_expired_orders() to service_role;
 grant execute on function public.cancel_purchase_order(uuid) to service_role;
 grant execute on function public.confirm_paid_purchase(uuid, text, integer) to service_role;
 grant execute on function public.register_manual_sale(uuid, integer) to service_role;
+grant execute on function public.register_demo_purchase(uuid, integer, text) to service_role;

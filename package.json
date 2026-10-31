@@ -6,6 +6,6 @@
     "node": ">=20"
   },
   "scripts": {
-    "check": "node --check api/products.js && node --check api/admin-login.js && node --check api/admin-products.js && node --check api/admin-categories.js && node --check api/admin-sale.js && node --check api/checkout/request-code.js && node --check api/checkout/verify-code.js && node --check api/payment-webhook.js && node --check api/payment-status.js && node --check lib/api.js"
+    "check": "node --check api/products.js && node --check api/admin-login.js && node --check api/admin-products.js && node --check api/admin-categories.js && node --check api/admin-sale.js && node --check api/demo-purchase.js && node --check api/checkout/request-code.js && node --check api/checkout/verify-code.js && node --check api/payment-webhook.js && node --check api/payment-status.js && node --check lib/api.js"
   }
 }
