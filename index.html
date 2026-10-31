@@ -542,6 +542,8 @@
     .approved-worker-actions { display: grid; min-width: min(230px, 100%); gap: .45rem; }
     .approved-worker-actions input { min-width: 0; padding: .55rem; border: 1px solid #34425d; border-radius: 8px; color: var(--ink); background: #101827; }
     .approved-worker-actions select { min-width: 0; padding: .55rem; border: 1px solid #34425d; border-radius: 8px; color: var(--ink); background: #101827; }
+    .worker-assignment-field { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: .55rem; }
+    .worker-assignment-field span { color: #c3cee2; font-size: .82rem; font-weight: 700; }
     .worker-directory-tabs { display: flex; flex-wrap: wrap; gap: .55rem; margin: 1rem 0; }
     .worker-directory-tabs [aria-pressed="true"] { border-color: var(--primary); background: var(--primary); color: #fff; }
     .worker-directory-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .8rem; }
@@ -3503,9 +3505,9 @@
           const assignmentActions = document.createElement("div");
           assignmentActions.className = "approved-worker-actions";
           assignmentActions.append(
-            createWorkerAssignmentSelect("Departamento", organizationCatalogs.filter(item => item.kind === "department").map(item => item.name), worker.department),
-            createWorkerAssignmentSelect("Cargo", organizationCatalogs.filter(item => item.kind === "job").map(item => item.name), worker.position),
-            createWorkerAssignmentSelect("Empresa", organizationCatalogs.filter(item => item.kind === "company").map(item => item.name), worker.company)
+            createWorkerAssignmentField("Departamento", createWorkerAssignmentSelect("Departamento", organizationCatalogs.filter(item => item.kind === "department").map(item => item.name), worker.department)),
+            createWorkerAssignmentField("Cargo", createWorkerAssignmentSelect("Cargo", organizationCatalogs.filter(item => item.kind === "job").map(item => item.name), worker.position)),
+            createWorkerAssignmentField("Empresa", createWorkerAssignmentSelect("Empresa", organizationCatalogs.filter(item => item.kind === "company").map(item => item.name), worker.company))
           );
           assignmentActions.querySelectorAll("select").forEach((select, index) => {
             select.dataset.workerField = ["department", "position", "company"][index];
@@ -3516,7 +3518,7 @@
           workerRoles.forEach(role => roleSelect.add(new Option(role.name, role.id)));
           roleSelect.dataset.workerField = "role";
           roleSelect.value = worker.role_id || "";
-          assignmentActions.append(roleSelect);
+          assignmentActions.append(createWorkerAssignmentField("Rol", roleSelect));
           const saveProfile = document.createElement("button");
           saveProfile.type = "button";
           saveProfile.className = "button button-secondary button-small";
@@ -3588,6 +3590,15 @@
       values.forEach(value => select.add(new Option(value, value)));
       select.value = currentValue || "";
       return select;
+    }
+
+    function createWorkerAssignmentField(labelText, select) {
+      const field = document.createElement("div");
+      field.className = "worker-assignment-field";
+      const label = document.createElement("span");
+      label.textContent = labelText;
+      field.append(label, select);
+      return field;
     }
 
     async function loadAdminWorkers({
@@ -3772,7 +3783,7 @@
         title: isRole ? `¿Eliminar el rol “${item.name}”?` : `¿Eliminar “${item.name}”?`,
         message: isRole
           ? "El rol se eliminará aunque haya trabajadores asignados. Sus cuentas permanecerán activas y aparecerán sin rol en Personas para que puedas asignarles otro."
-          : "Esta acción eliminará este elemento del catálogo y no se puede deshacer.",
+          : "Se eliminará del catálogo y se quitará de las personas que lo tengan asignado. Después podrás elegir otra opción en Personas.",
         detail: isRole ? "Los trabajadores afectados quedarán sin permisos de rol hasta que se les asigne uno nuevo." : "",
         kicker: isRole ? "Gestión de roles" : "Gestión de catálogos",
         confirmLabel: "Sí, eliminar",

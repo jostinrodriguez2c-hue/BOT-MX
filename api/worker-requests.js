@@ -182,10 +182,10 @@ module.exports = async function handler(req, res) {
         );
         if (!catalog) return sendJson(res, 404, { error: "No se encontró el elemento del catálogo." });
         const field = catalog.kind === "department" ? "department" : catalog.kind === "job" ? "position" : "company";
-        const used = await supabase(
-          `/rest/v1/worker_applications?${field}=eq.${encodeURIComponent(catalog.name)}&select=email&limit=1`
-        );
-        if (used.length) return sendJson(res, 409, { error: "No se puede eliminar porque está asignado a un trabajador." });
+        await supabase(`/rest/v1/worker_applications?${field}=eq.${encodeURIComponent(catalog.name)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ [field]: "" })
+        });
         await supabase(`/rest/v1/organization_catalogs?id=eq.${encodeURIComponent(catalog.id)}`, { method: "DELETE" });
         return sendJson(res, 200, { ok: true });
       }
