@@ -69,6 +69,16 @@ module.exports = async function handler(req, res) {
     if (!rows.length) return sendJson(res, 404, { error: "No se encontró la solicitud." });
     return sendJson(res, 200, { ok: true, status: rows[0].status });
   } catch (error) {
+    const details = error.details && typeof error.details === "object" ? error.details : {};
+    const databaseMessage = `${error.message || ""} ${details.message || ""} ${details.details || ""}`.toLowerCase();
+    if (
+      ["PGRST205", "42P01"].includes(details.code)
+      && databaseMessage.includes("worker_applications")
+    ) {
+      return sendJson(res, 503, {
+        error: "El sistema de solicitudes aún no está configurado en Supabase. Ejecuta el archivo supabase/schema.sql y vuelve a intentarlo."
+      });
+    }
     return publicError(error, res);
   }
 };

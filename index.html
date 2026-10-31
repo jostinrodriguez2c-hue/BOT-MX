@@ -789,6 +789,9 @@
     </section>
 
     <section class="route-view page-view" id="adminView" hidden>
+      <div class="toolbar">
+        <button class="button button-secondary" id="adminBackButton" type="button">Volver a la pantalla anterior</button>
+      </div>
       <div class="admin-layout">
         <nav class="admin-side-nav" id="adminSideNav" aria-label="Panel administrativo">
           <button type="button" data-admin-module="people">Personas</button>
@@ -797,6 +800,7 @@
       </div>
     </section>
 
+    <div id="adminPanelHome">
     <section class="admin-panel" id="adminPanel" aria-labelledby="adminHeading" hidden>
       <div class="admin-header">
         <div class="admin-heading">
@@ -1029,6 +1033,7 @@
           <p>Basta con completar el mismo gusto en ambas fichas. En “Editar información” puedes agregar uno de estos datos.</p>
           <div class="comparison-requirements-list" id="connectionRequirementsList"></div>
         </section>
+        </div>
       </form>
       <section class="info-card" id="connectionPreview" hidden aria-live="polite">
         <h3 id="connectionPreviewTitle">Comparación automática</h3>
@@ -1236,6 +1241,7 @@
       refreshWorkerRequestsButton: document.querySelector("#refreshWorkerRequestsButton"),
       workerRequestsDialog: document.querySelector("#workerRequestsDialog"),
       adminRouteButton: document.querySelector("#adminRouteButton"),
+      adminBackButton: document.querySelector("#adminBackButton"),
       adminSideNav: document.querySelector("#adminSideNav"),
       adminView: document.querySelector("#adminView"),
       adminModuleContent: document.querySelector("#adminModuleContent"),
@@ -1257,6 +1263,7 @@
       suggestionForm: document.querySelector("#suggestionForm"),
       suggestionStatus: document.querySelector("#suggestionStatus"),
       adminPanel: document.querySelector("#adminPanel"),
+      adminPanelHome: document.querySelector("#adminPanelHome"),
       adminMenu: document.querySelector("#adminMenu"),
       adminWorkspace: document.querySelector("#adminWorkspace"),
       workspaceTitle: document.querySelector("#workspaceTitle"),
@@ -1349,6 +1356,7 @@
     let pendingConnectionDeleteId = null;
     let pendingPortalDelete = null;
     let activeRoute = /^[0-9a-f-]{36}$/i.test(PAYMENT_RETURN_ORDER_ID || "") ? "inventory" : "welcome";
+    let adminReturnState = null;
     let activeInventorySection = "home";
     let activeAdminModule = "people";
     let editingCollectionItem = null;
@@ -2503,6 +2511,15 @@
         render();
         return;
       }
+      if (route === "admin" && activeRoute !== "admin") {
+        adminReturnState = {
+          route: activeRoute,
+          entryMode,
+          inventorySection: activeInventorySection,
+          adminPanelOpen: isAdminPanelOpen,
+          scrollY: window.scrollY
+        };
+      }
       activeRoute = route;
       if (route === "welcome") entryMode = "choose";
       if (route === "inventory") activeInventorySection = hasInventoryAccess() ? "home" : "catalog";
@@ -2518,7 +2535,11 @@
     }
 
     function renderAdminModule() {
-      if (!isAdmin || activeRoute !== "admin") return;
+      if (!isAdmin || activeRoute !== "admin") {
+        elements.adminPanelHome.append(elements.adminPanel);
+        elements.adminPanel.hidden = !isAdmin || !isAdminPanelOpen || activeRoute !== "home";
+        return;
+      }
       elements.adminModuleContent.replaceChildren();
       elements.adminPanel.hidden = true;
       elements.adminSideNav.querySelectorAll("[data-admin-module]").forEach(button => {
@@ -3481,6 +3502,8 @@
     elements.workerApplicationForm.addEventListener("submit", async event => {
       event.preventDefault();
       const email = String(new FormData(elements.workerApplicationForm).get("email") || "").trim();
+      const submitButton = elements.workerApplicationForm.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
       setStatus(elements.workerApplicationStatus, "Enviando solicitud…", "");
       try {
         const result = await apiRequest("/api/worker-requests", {
@@ -3491,6 +3514,8 @@
         elements.workerApplicationForm.reset();
       } catch (error) {
         setStatus(elements.workerApplicationStatus, error.message, "error");
+      } finally {
+        submitButton.disabled = false;
       }
     });
 
@@ -3517,6 +3542,20 @@
     elements.manageAllButton.addEventListener("click", () => {
       if (!isAdmin) return;
       setRoute("admin");
+    });
+
+    elements.adminBackButton.addEventListener("click", () => {
+      if (!isAdmin) return;
+      const previous = adminReturnState;
+      adminReturnState = null;
+      activeRoute = previous ? previous.route : "home";
+      entryMode = previous ? previous.entryMode : "choose";
+      activeInventorySection = previous
+        ? previous.inventorySection
+        : hasInventoryAccess() ? "home" : "catalog";
+      isAdminPanelOpen = previous ? previous.adminPanelOpen : false;
+      render();
+      window.scrollTo({ top: previous ? previous.scrollY : 0, behavior: "smooth" });
     });
 
     elements.workerRequestsButton.addEventListener("click", () => {
