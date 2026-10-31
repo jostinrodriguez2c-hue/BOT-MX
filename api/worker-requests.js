@@ -1,4 +1,4 @@
-const { body, publicError, requireAdmin, sendJson, supabase } = require("../lib/api");
+const { body, publicError, requireAdmin, sendJson, supabase, writeActivity } = require("../lib/api");
 
 function normalizeEmail(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -12,8 +12,21 @@ module.exports = async function handler(req, res) {
   try {
     if (req.method === "GET") {
       await requireAdmin(req);
+      if (req.query && req.query.view === "workers") {
+        const [applications, accounts, warnings] = await Promise.all([
+          supabase("/rest/v1/worker_applications?select=email,name,status,created_at&status=eq.approved&order=created_at.desc"),
+          supabase("/rest/v1/worker_users?select=email,user_id,name"),
+          supabase("/rest/v1/worker_warnings?select=email,message,created_at&order=created_at.desc")
+        ]);
+        const workers = applications.map(application => ({
+          ...application,
+          accountCreated: accounts.some(account => account.email === application.email),
+          warnings: warnings.filter(warning => warning.email === application.email)
+        }));
+        return sendJson(res, 200, { workers });
+      }
       const requests = await supabase(
-        "/rest/v1/worker_applications?select=email,status,created_at,reviewed_at&order=created_at.desc"
+        "/rest/v1/worker_applications?select=email,name,status,created_at,reviewed_at&order=created_at.desc"
       );
       return sendJson(res, 200, { requests });
     }
@@ -25,13 +38,24 @@ module.exports = async function handler(req, res) {
     }
 
     if (req.method === "POST") {
+      const name = typeof payload.name === "string" ? payload.name.trim() : "";
+      if (!name || name.length > 120) {
+        return sendJson(res, 400, { error: "Escribe tu nombre (máximo 120 caracteres)." });
+      }
       const [existing] = await supabase(
         `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&select=status&limit=1`
       );
       if (existing && existing.status === "approved") {
         return sendJson(res, 409, { error: "Esta solicitud ya fue aprobada. Crea tu cuenta en la sección Trabajador." });
       }
+      if (existing && existing.status === "terminated") {
+        return sendJson(res, 409, { error: "Esta solicitud fue cerrada por el administrador." });
+      }
       if (existing && existing.status === "pending") {
+        await supabase(`/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name })
+        });
         return sendJson(res, 200, { ok: true, message: "La solicitud ya está pendiente de revisión." });
       }
       await supabase("/rest/v1/worker_applications", {
@@ -39,6 +63,7 @@ module.exports = async function handler(req, res) {
         headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify({
           email,
+          name,
           status: "pending",
           created_at: new Date().toISOString(),
           reviewed_at: null,
@@ -50,13 +75,52 @@ module.exports = async function handler(req, res) {
 
     const admin = await requireAdmin(req);
     const action = payload.action;
-    if (!["approve", "reject"].includes(action)) {
-      return sendJson(res, 400, { error: "Selecciona aceptar o rechazar la solicitud." });
+    if (!["approve", "reject", "warn", "dismiss"].includes(action)) {
+      return sendJson(res, 400, { error: "Selecciona una acción válida para la solicitud." });
     }
     const [request] = await supabase(
       `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&select=email,status&limit=1`
     );
     if (!request) return sendJson(res, 404, { error: "No se encontró la solicitud." });
+    if (action === "warn" || action === "dismiss") {
+      if (request.status !== "approved") {
+        return sendJson(res, 409, { error: "Solo se pueden administrar trabajadores aprobados." });
+      }
+      if (action === "warn") {
+        const message = typeof payload.message === "string" ? payload.message.trim() : "";
+        if (!message || message.length > 500) {
+          return sendJson(res, 400, { error: "Escribe el motivo de la advertencia (máximo 500 caracteres)." });
+        }
+        await supabase("/rest/v1/worker_warnings", {
+          method: "POST",
+          body: JSON.stringify({ email, message, created_by: admin.id })
+        });
+        await writeActivity(
+          admin,
+          "worker_warning",
+          "Advertencia para trabajador",
+          { email, message },
+          "worker",
+          email
+        );
+        return sendJson(res, 201, { ok: true, action: "warn" });
+      }
+      const dismissed = await supabase(`/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.approved`, {
+        method: "PATCH",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          status: "terminated",
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: admin.id
+        })
+      });
+      if (!dismissed.length) return sendJson(res, 409, { error: "El trabajador ya no está activo." });
+      await writeActivity(admin, "worker_dismissal", "Despidió a un trabajador", { email });
+      return sendJson(res, 200, { ok: true, action: "dismiss" });
+    }
+    if (request.status !== "pending") {
+      return sendJson(res, 409, { error: "Solo se pueden aprobar o rechazar solicitudes pendientes." });
+    }
     const rows = await supabase(`/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&select=email,status`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
@@ -67,16 +131,22 @@ module.exports = async function handler(req, res) {
       })
     });
     if (!rows.length) return sendJson(res, 404, { error: "No se encontró la solicitud." });
+    await writeActivity(
+      admin,
+      action === "approve" ? "worker_approval" : "worker_rejection",
+      action === "approve" ? "Aprobó a un trabajador" : "Rechazó una solicitud de trabajador",
+      { email, name: request.name || "" }
+    );
     return sendJson(res, 200, { ok: true, status: rows[0].status });
   } catch (error) {
     const details = error.details && typeof error.details === "object" ? error.details : {};
     const databaseMessage = `${error.message || ""} ${details.message || ""} ${details.details || ""}`.toLowerCase();
     if (
-      ["PGRST205", "42P01"].includes(details.code)
-      && databaseMessage.includes("worker_applications")
+      ["PGRST204", "PGRST205", "42P01", "42703"].includes(details.code)
+      && ["worker_applications", "worker_users", "worker_warnings", "activity_events"].some(table => databaseMessage.includes(table))
     ) {
       return sendJson(res, 503, {
-        error: "El sistema de solicitudes aún no está configurado en Supabase. Ejecuta el archivo supabase/schema.sql y vuelve a intentarlo."
+        error: "Falta actualizar las tablas de trabajadores en Supabase. Ejecuta el archivo supabase/schema.sql completo y vuelve a intentarlo."
       });
     }
     return publicError(error, res);

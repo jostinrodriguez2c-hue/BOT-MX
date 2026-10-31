@@ -506,6 +506,25 @@
     .worker-request-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .8rem; border: 1px solid #34425d; border-radius: 11px; background: #172338; }
     .worker-request-email { min-width: 0; overflow-wrap: anywhere; font-weight: 650; }
     .worker-request-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .approved-worker-row { align-items: flex-start; }
+    .approved-worker-details { display: grid; min-width: 0; gap: .35rem; }
+    .approved-worker-details strong { overflow-wrap: anywhere; }
+    .approved-worker-details span, .approved-worker-details small { color: var(--muted); overflow-wrap: anywhere; }
+    .approved-worker-actions { display: grid; min-width: min(230px, 100%); gap: .45rem; }
+    .approved-worker-actions input { min-width: 0; padding: .55rem; border: 1px solid #34425d; border-radius: 8px; color: var(--ink); background: #101827; }
+    .notification-button { position: relative; min-width: 42px; padding: .55rem .7rem; font-size: 1.15rem; }
+    .notification-badge { position: absolute; top: -.35rem; right: -.35rem; display: grid; min-width: 1.2rem; height: 1.2rem; place-items: center; padding: 0 .25rem; border-radius: 999px; color: #fff; background: #d33b52; font-size: .68rem; font-weight: 750; }
+    .notification-list, .activity-list { display: grid; gap: .6rem; max-height: 60vh; overflow-y: auto; }
+    .notification-item, .activity-item { display: grid; gap: .3rem; padding: .8rem; border: 1px solid #34425d; border-radius: 11px; background: #172338; }
+    .notification-item time, .activity-item time, .notification-item small, .activity-item small { color: var(--muted); font-size: .78rem; }
+    .notification-item p, .activity-item p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+    .activity-item { grid-template-columns: minmax(130px, .7fr) minmax(130px, .8fr) minmax(180px, 1fr) minmax(200px, 2fr); align-items: start; }
+    .activity-item > strong { overflow-wrap: anywhere; }
+    .activity-session-start { color: #67d8a0; }
+    .activity-session-end { color: #ff8291; }
+    @media (max-width: 640px) {
+      .activity-item { grid-template-columns: 1fr; }
+    }
     .card, .info-card, .stat-card, .data-table-wrap, .generic-form, .admin-form, .admin-side-nav, .admin-module, .faq-list details, .admin-panel, .admin-menu-button, .manage-row, .inventory-summary-card, .connection-card, .connection-person, .detail-field, .org-node, .draft-row, .admin-workspace {
       color: var(--ink);
       border-color: var(--line);
@@ -568,6 +587,9 @@
     <div class="topbar-actions">
       <button class="button button-primary" id="manageAllButton" type="button" hidden>Administrar todo</button>
       <button class="button button-secondary" id="workerRequestsButton" type="button" hidden>Ver solicitudes</button>
+      <button class="button button-secondary notification-button" id="notificationButton" type="button" aria-label="Notificaciones" aria-haspopup="dialog">
+        <span aria-hidden="true">🔔</span><span class="notification-badge" id="notificationBadge" hidden>0</span>
+      </button>
       <button class="button button-secondary button-small" id="logoutButton" type="button" hidden>Cerrar sesión</button>
     </div>
   </header>
@@ -627,7 +649,8 @@
             </form>
             <form class="generic-form" id="workerApplicationForm">
               <h2>Solicitar acceso</h2>
-              <p>Solo solicitamos tu correo. Nunca pediremos ni mostraremos tu contraseña.</p>
+              <p>Escribe tu nombre y correo. Nunca pediremos ni mostraremos tu contraseña en esta solicitud.</p>
+              <label>Nombre completo<input name="name" type="text" maxlength="120" autocomplete="name" required></label>
               <label>Tu correo electrónico<input name="email" type="email" autocomplete="email" required></label>
               <p class="status-message" id="workerApplicationStatus" role="status"></p>
               <button class="button button-secondary" type="submit">Enviar solicitud</button>
@@ -795,6 +818,8 @@
       <div class="admin-layout">
         <nav class="admin-side-nav" id="adminSideNav" aria-label="Panel administrativo">
           <button type="button" data-admin-module="people">Personas</button>
+          <button type="button" data-admin-module="workers">Trabajadores aprobados</button>
+          <button type="button" data-admin-module="activity">Historial de actividad</button>
         </nav>
         <div class="admin-module" id="adminModuleContent"></div>
       </div>
@@ -1203,6 +1228,24 @@
     </div>
   </dialog>
 
+  <dialog id="notificationsDialog" aria-labelledby="notificationsTitle">
+    <div class="dialog-content">
+      <div class="dialog-top">
+        <div>
+          <h2 id="notificationsTitle">Notificaciones</h2>
+          <p class="dialog-subtitle">Compras simuladas y avisos dirigidos a tu cuenta.</p>
+        </div>
+        <button class="icon-button" type="button" data-close="notificationsDialog" aria-label="Cerrar">×</button>
+      </div>
+      <p class="status-message" id="notificationsStatus" role="status" aria-live="polite"></p>
+      <div class="notification-list" id="notificationList" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <button class="button button-secondary" id="refreshNotificationsButton" type="button">Actualizar</button>
+        <button class="button button-secondary" type="button" data-close="notificationsDialog">Cerrar</button>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     const LOCAL_ADMIN_CODE = "3";
     const PUBLISH_CODE = "9078";
@@ -1215,6 +1258,7 @@
     const INVENTORY_CATEGORIES_STORAGE_KEY = "material-inventory-categories-v1";
     const PORTAL_STORAGE_KEY = "portal-institucional-demo-v1";
     const ACTIVITY_STORAGE_KEY = "portal-institucional-activity-v1";
+    const PERSONAL_NOTIFICATION_STORAGE_KEY = "wilcox-personal-notifications-v1";
     const REGION_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW XK".split(" ");
 
     const elements = {
@@ -1240,6 +1284,12 @@
       workerRequestsStatus: document.querySelector("#workerRequestsStatus"),
       refreshWorkerRequestsButton: document.querySelector("#refreshWorkerRequestsButton"),
       workerRequestsDialog: document.querySelector("#workerRequestsDialog"),
+      notificationButton: document.querySelector("#notificationButton"),
+      notificationBadge: document.querySelector("#notificationBadge"),
+      notificationsDialog: document.querySelector("#notificationsDialog"),
+      notificationsStatus: document.querySelector("#notificationsStatus"),
+      notificationList: document.querySelector("#notificationList"),
+      refreshNotificationsButton: document.querySelector("#refreshNotificationsButton"),
       adminRouteButton: document.querySelector("#adminRouteButton"),
       adminBackButton: document.querySelector("#adminBackButton"),
       adminSideNav: document.querySelector("#adminSideNav"),
@@ -1359,9 +1409,14 @@
     let adminReturnState = null;
     let activeInventorySection = "home";
     let activeAdminModule = "people";
+    let adminWorkersLoaded = false;
+    let adminWorkersLoading = false;
     let editingCollectionItem = null;
     let portalData = loadPortalData();
     let activityLog = loadActivityLog();
+    let notificationEvents = [];
+    let notificationUnreadCount = 0;
+    let notificationIdentity = "visitor";
     let demoSuggestions = [];
     const hasInventoryAccess = () => isAdmin || isWorker;
     if (people.length === 0) {
@@ -1490,10 +1545,19 @@
         row.className = "worker-request-row";
         const identity = document.createElement("div");
         identity.className = "worker-request-email";
-        identity.textContent = request.email;
+        if (request.name) {
+          const name = document.createElement("strong");
+          name.textContent = request.name;
+          identity.append(name, document.createElement("br"));
+        }
+        identity.append(document.createTextNode(request.email));
         const status = document.createElement("span");
         status.className = "draft-label";
-        status.textContent = request.status === "pending" ? "Pendiente" : request.status === "approved" ? "Aprobada" : "Rechazada";
+        status.textContent = request.status === "pending"
+          ? "Pendiente"
+          : request.status === "approved"
+            ? "Aprobada"
+            : request.status === "terminated" ? "Despedida" : "Rechazada";
         identity.append(document.createElement("br"), status);
         row.append(identity);
         if (request.status === "pending") {
@@ -1760,7 +1824,7 @@
           vision: "Ser una institución cercana, transparente y comprometida con las personas.",
           values: "Servicio, respeto, integridad, inclusión y trabajo en equipo.",
           history: "Institución ficticia creada como ejemplo para esta demostración.",
-          timezone: "America/Mexico_City",
+          timezone: "America/Panama",
           privacy: "Solo se publican datos de ejemplo con autorización.",
           terms: "Sitio de demostración sin validez oficial."
         },
@@ -1809,13 +1873,214 @@
     }
 
     function recordActivity(action, detail) {
-      activityLog.unshift({ action, detail, at: new Date().toISOString(), actor: "Administrador de demostración" });
+      const eventType = action === "Inicio de sesión"
+        ? isWorker && !isAdmin ? "worker_login" : "admin_login"
+        : action === "Cierre de sesión"
+          ? isWorker && !isAdmin ? "worker_logout" : "admin_logout"
+          : "admin_action";
+      const event = {
+        action,
+        detail,
+        at: new Date().toISOString(),
+        actor: "Administrador de demostración",
+        event_type: eventType
+      };
+      activityLog.unshift(event);
       activityLog = activityLog.slice(0, 200);
       try {
         localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(activityLog));
       } catch (error) {
         console.error("No se pudo guardar el historial de actividad.", error);
       }
+      if (REMOTE_INVENTORY_ENABLED && (adminAccessToken || workerAccessToken)) {
+        const request = apiRequest("/api/notifications", {
+          method: "POST",
+          admin: true,
+          body: { action, detail }
+        });
+        request.catch(error => console.error("No se pudo sincronizar el historial de actividad.", error));
+        return request;
+      } else if (!REMOTE_INVENTORY_ENABLED) {
+        return Promise.resolve();
+      }
+      return Promise.resolve();
+    }
+
+    function notificationSeenStorageKey() {
+      return `wilcox-notifications-seen:${notificationIdentity}`;
+    }
+
+    function loadPersonalNotifications() {
+      try {
+        const saved = localStorage.getItem(PERSONAL_NOTIFICATION_STORAGE_KEY);
+        const parsed = saved ? JSON.parse(saved) : [];
+        return Array.isArray(parsed)
+          ? parsed.filter(event => event && event.event_type === "purchase")
+          : [];
+      } catch (error) {
+        console.error("No se pudieron cargar las notificaciones personales.", error);
+        return [];
+      }
+    }
+
+    function savePersonalNotification(event) {
+      const events = loadPersonalNotifications();
+      events.unshift(event);
+      try {
+        localStorage.setItem(PERSONAL_NOTIFICATION_STORAGE_KEY, JSON.stringify(events));
+      } catch (error) {
+        console.error("No se pudo guardar la notificación de compra en este navegador.", error);
+      }
+      if (!isAdmin && !isWorker) {
+        notificationEvents = events;
+        notificationUnreadCount = countLocalUnreadNotifications();
+        updateNotificationBadge();
+        if (elements.notificationsDialog.open) renderNotifications(notificationEvents);
+      }
+    }
+
+    function getLocalNotificationEvents() {
+      return notificationIdentity === "visitor" ? loadPersonalNotifications() : [];
+    }
+
+    function recordPurchaseNotification(product, quantity) {
+      savePersonalNotification({
+        id: `purchase-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        event_type: "purchase",
+        summary: `Compra simulada: ${product.name}`,
+        details: {
+          product_name: product.name,
+          quantity,
+          unit: product.unit,
+          total_cents: product.price_cents * quantity,
+          currency: "USD"
+        },
+        actor_name: "Tu compra",
+        created_at: new Date().toISOString()
+      });
+    }
+
+    function formatActivityDate(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "Fecha desconocida";
+      try {
+        return new Intl.DateTimeFormat("es-MX", {
+          dateStyle: "medium",
+          timeStyle: "short",
+          timeZone: "America/Panama"
+        }).format(date);
+      } catch (error) {
+        console.error("No se pudo mostrar la hora de Panamá.", error);
+        return date.toISOString();
+      }
+    }
+
+    function activityDetailsText(event) {
+      const details = event.details && typeof event.details === "object" ? event.details : {};
+      if (event.event_type === "purchase") {
+        const quantity = Number(details.quantity);
+        const amount = Number(details.total_cents);
+        return `Compró ${Number.isFinite(quantity) ? quantity : ""} ${details.unit || "unidades"} de ${details.product_name || event.summary} por ${formatUsd(amount)}. Compra simulada, sin cobro.`;
+      }
+      if (event.event_type === "worker_warning") return `Motivo: ${details.message || "Sin detalle"}`;
+      if (details.detail) return String(details.detail);
+      if (details.email) return `Correo: ${details.email}${details.name ? ` · Nombre: ${details.name}` : ""}`;
+      return Object.keys(details).length ? JSON.stringify(details) : "Sin detalles adicionales.";
+    }
+
+    function createActivityCard(event, history = false) {
+      const card = document.createElement("article");
+      card.className = history ? "activity-item" : "notification-item";
+      const actor = document.createElement(history ? "strong" : "small");
+      actor.textContent = event.actor_name || event.actor_email || (event.event_type === "purchase" ? "Visitante" : "Sistema");
+      const date = document.createElement("time");
+      date.dateTime = event.created_at || "";
+      date.textContent = formatActivityDate(event.created_at);
+      const title = document.createElement("strong");
+      title.textContent = event.summary || "Actividad";
+      if (history && ["admin_login", "worker_login"].includes(event.event_type)) {
+        title.classList.add("activity-session-start");
+      } else if (history && ["admin_logout", "worker_logout"].includes(event.event_type)) {
+        title.classList.add("activity-session-end");
+      }
+      const detail = document.createElement("p");
+      detail.textContent = activityDetailsText(event);
+      if (history) card.append(actor, date, title, detail);
+      else card.append(title, detail, actor, date);
+      return card;
+    }
+
+    function renderNotifications(events) {
+      elements.notificationList.replaceChildren();
+      if (!events.length) {
+        const empty = document.createElement("p");
+        empty.className = "manage-empty";
+        empty.textContent = "No hay notificaciones por ahora.";
+        elements.notificationList.append(empty);
+        return;
+      }
+      events.forEach(event => elements.notificationList.append(createActivityCard(event)));
+    }
+
+    function updateNotificationBadge() {
+      elements.notificationBadge.textContent = String(notificationUnreadCount);
+      elements.notificationBadge.hidden = notificationUnreadCount === 0;
+    }
+
+    async function refreshNotifications(markSeen = false) {
+      if (REMOTE_INVENTORY_ENABLED) {
+        const result = await apiRequest("/api/notifications", { admin: true });
+        if (!Array.isArray(result.events)) {
+          throw new Error("El servidor devolvió una lista de notificaciones no válida.");
+        }
+        notificationEvents = result.events;
+        if (adminAccessToken || workerAccessToken) {
+          const count = Number(result.unreadCount);
+          if (!Number.isSafeInteger(count) || count < 0) {
+            throw new Error("El servidor devolvió un contador de notificaciones no válido.");
+          }
+          notificationUnreadCount = count;
+        } else {
+          notificationEvents = getLocalNotificationEvents();
+          notificationUnreadCount = countLocalUnreadNotifications();
+        }
+      } else {
+        notificationEvents = getLocalNotificationEvents();
+        notificationUnreadCount = countLocalUnreadNotifications();
+      }
+      notificationEvents.sort((left, right) => new Date(right.created_at) - new Date(left.created_at));
+      renderNotifications(notificationEvents);
+      if (markSeen) {
+        if (REMOTE_INVENTORY_ENABLED && (adminAccessToken || workerAccessToken)) {
+          await apiRequest("/api/notifications", {
+            method: "POST",
+            admin: true,
+            body: { action: "mark_read" }
+          });
+        } else {
+          try {
+            localStorage.setItem(notificationSeenStorageKey(), String(Date.now()));
+          } catch (error) {
+            console.error("No se pudo guardar el estado de las notificaciones.", error);
+            throw new Error("No se pudo guardar cuáles notificaciones ya leíste.");
+          }
+        }
+        notificationUnreadCount = 0;
+      }
+      updateNotificationBadge();
+      if (elements.notificationsDialog.open) {
+        setStatus(elements.notificationsStatus, "", "");
+      }
+    }
+
+    function countLocalUnreadNotifications() {
+      let seenAt = 0;
+      try {
+        seenAt = Number(localStorage.getItem(notificationSeenStorageKey())) || 0;
+      } catch (error) {
+        console.error("No se pudo leer el estado de las notificaciones.", error);
+      }
+      return notificationEvents.filter(event => new Date(event.created_at).getTime() > seenAt).length;
     }
 
     function escapeHtml(value) {
@@ -2556,6 +2821,10 @@
         elements.adminPanel.hidden = false;
         return;
       }
+      if (activeAdminModule === "workers") {
+        renderAdminWorkers();
+        return;
+      }
 
       const modules = {
         dashboard: renderAdminDashboard,
@@ -2570,6 +2839,119 @@
         security: renderAdminSecurity
       };
       (modules[activeAdminModule] || renderAdminDashboard)();
+    }
+
+    function renderAdminWorkers() {
+      elements.adminModuleContent.innerHTML = `<h2>Trabajadores aprobados</h2>
+        <p>Consulta sus cuentas, registra advertencias o retira el acceso de un trabajador.</p>
+        <button class="button button-secondary button-small" type="button" data-refresh-workers>Actualizar lista</button>
+        <p class="status-message" id="adminWorkersStatus" role="status" aria-live="polite"></p>
+        <div class="worker-requests-list" id="adminWorkersList" aria-live="polite"><p>Cargando trabajadores…</p></div>`;
+      if (!adminWorkersLoaded && !adminWorkersLoading) loadAdminWorkers();
+    }
+
+    function renderApprovedWorkers(workers) {
+      const list = elements.adminModuleContent.querySelector("#adminWorkersList");
+      if (!list) return;
+      list.replaceChildren();
+      if (!workers.length) {
+        const empty = document.createElement("p");
+        empty.className = "manage-empty";
+        empty.textContent = "No hay trabajadores aprobados todavía.";
+        list.append(empty);
+        return;
+      }
+      for (const worker of workers) {
+        const row = document.createElement("article");
+        row.className = "worker-request-row approved-worker-row";
+        const details = document.createElement("div");
+        details.className = "approved-worker-details";
+        const name = document.createElement("strong");
+        name.textContent = worker.name || "Nombre no indicado";
+        const email = document.createElement("span");
+        email.textContent = worker.email;
+        const account = document.createElement("small");
+        account.textContent = worker.accountCreated ? "Cuenta creada" : "Cuenta pendiente de creación";
+        const warningCount = document.createElement("small");
+        const warnings = Array.isArray(worker.warnings) ? worker.warnings : [];
+        warningCount.textContent = `Advertencias: ${warnings.length}`;
+        details.append(name, email, account, warningCount);
+        if (warnings.length) {
+          const latestWarning = document.createElement("small");
+          latestWarning.textContent = `Última advertencia: ${warnings[0].message}`;
+          details.append(latestWarning);
+        }
+
+        const actions = document.createElement("div");
+        actions.className = "approved-worker-actions";
+        const reason = document.createElement("input");
+        reason.type = "text";
+        reason.maxLength = 500;
+        reason.placeholder = "Motivo de advertencia";
+        reason.setAttribute("aria-label", `Motivo de advertencia para ${worker.name || worker.email}`);
+        const warn = document.createElement("button");
+        warn.type = "button";
+        warn.className = "button button-secondary button-small";
+        warn.textContent = "Advertencia";
+        warn.dataset.workerAction = "warn";
+        warn.dataset.workerEmail = worker.email;
+        const dismiss = document.createElement("button");
+        dismiss.type = "button";
+        dismiss.className = "button button-danger button-small";
+        dismiss.textContent = "Despedir";
+        dismiss.dataset.workerAction = "dismiss";
+        dismiss.dataset.workerEmail = worker.email;
+        actions.append(reason, warn, dismiss);
+        row.append(details, actions);
+        list.append(row);
+      }
+    }
+
+    async function loadAdminWorkers() {
+      if (!isAdmin || adminWorkersLoading) return;
+      adminWorkersLoading = true;
+      const status = elements.adminModuleContent.querySelector("#adminWorkersStatus");
+      if (status) setStatus(status, "Cargando trabajadores…", "");
+      try {
+        const result = await apiRequest("/api/worker-requests?view=workers", { admin: true });
+        renderApprovedWorkers(Array.isArray(result.workers) ? result.workers : []);
+        adminWorkersLoaded = true;
+        const currentStatus = elements.adminModuleContent.querySelector("#adminWorkersStatus");
+        if (currentStatus) setStatus(currentStatus, "", "");
+      } catch (error) {
+        const currentStatus = elements.adminModuleContent.querySelector("#adminWorkersStatus");
+        if (currentStatus) setStatus(currentStatus, error.message, "error");
+      } finally {
+        adminWorkersLoading = false;
+      }
+    }
+
+    async function updateApprovedWorker(button) {
+      if (!isAdmin) return;
+      const action = button.dataset.workerAction;
+      const email = button.dataset.workerEmail;
+      if (action === "dismiss" && !window.confirm(`¿Seguro que deseas despedir a ${email}? Se revocará su acceso.`)) return;
+      const row = button.closest(".approved-worker-row");
+      const message = action === "warn"
+        ? row.querySelector("input").value.trim() || "Advertencia administrativa."
+        : "";
+      const status = elements.adminModuleContent.querySelector("#adminWorkersStatus");
+      const buttons = [...row.querySelectorAll("button")];
+      buttons.forEach(item => { item.disabled = true; });
+      try {
+        await apiRequest("/api/worker-requests", {
+          method: "PATCH",
+          admin: true,
+          body: { email, action, message }
+        });
+        adminWorkersLoaded = false;
+        await loadAdminWorkers();
+        const currentStatus = elements.adminModuleContent.querySelector("#adminWorkersStatus");
+        if (currentStatus) setStatus(currentStatus, action === "warn" ? "Advertencia registrada." : "Acceso del trabajador revocado.", "success");
+      } catch (error) {
+        if (status) setStatus(status, error.message, "error");
+        buttons.forEach(item => { item.disabled = false; });
+      }
     }
 
     function renderAdminDashboard() {
@@ -2622,7 +3004,47 @@
     }
 
     function renderAdminActivity() {
-      elements.adminModuleContent.innerHTML = `<h2>Historial de actividad</h2><p>Registro local limitado a este navegador; no identifica cuentas reales.</p>${renderGenericTable(["Fecha y hora","Administrador","Acción","Detalle"],activityLog.map(item=>[new Date(item.at).toLocaleString("es"),item.actor,item.action,item.detail]))}`;
+      elements.adminModuleContent.innerHTML = `<h2>Historial de actividad</h2>
+        <p>Registro de acciones con usuario, fecha, hora y detalle.</p>
+        <button class="button button-secondary button-small" type="button" data-refresh-activity>Actualizar historial</button>
+        <p class="status-message" id="adminActivityStatus" role="status" aria-live="polite"></p>
+        <div class="activity-list" id="adminActivityList"></div>`;
+      loadAdminActivity();
+    }
+
+    async function loadAdminActivity() {
+      const list = elements.adminModuleContent.querySelector("#adminActivityList");
+      const status = elements.adminModuleContent.querySelector("#adminActivityStatus");
+      if (!list || !status) return;
+      if (!REMOTE_INVENTORY_ENABLED) {
+        list.replaceChildren();
+        activityLog.forEach(item => list.append(createActivityCard({
+          event_type: item.event_type || "admin_action",
+          summary: item.action,
+          details: { detail: item.detail },
+          actor_name: item.actor,
+          created_at: item.at
+        }, true)));
+        setStatus(status, "", "");
+        return;
+      }
+      setStatus(status, "Cargando historial…", "");
+      try {
+        const result = await apiRequest("/api/notifications?view=history", { admin: true });
+        const events = Array.isArray(result.events) ? result.events : [];
+        list.replaceChildren();
+        if (!events.length) {
+          const empty = document.createElement("p");
+          empty.className = "manage-empty";
+          empty.textContent = "Todavía no hay actividad registrada.";
+          list.append(empty);
+        } else {
+          events.forEach(event => list.append(createActivityCard(event, true)));
+        }
+        setStatus(status, "", "");
+      } catch (error) {
+        setStatus(status, error.message, "error");
+      }
     }
 
     function renderAdminSettings() {
@@ -2837,6 +3259,7 @@
       } else if (!saveInventoryCategories([...inventoryCategories, category])) {
         return;
       }
+      recordActivity("Creación de categoría", category);
       elements.inventoryCategoryEditor.hidden = true;
       elements.newInventoryCategory.value = "";
       render();
@@ -2869,6 +3292,7 @@
         const updatedCategories = inventoryCategories.filter(item => item !== category);
         if (!saveInventoryCategories(updatedCategories)) return;
       }
+      recordActivity("Eliminación de categoría", category);
       elements.inventoryForm.elements.category.value = "";
       setStatus(elements.adminStatus, "Categoría eliminada.", "success");
       render();
@@ -2896,6 +3320,7 @@
       const button = event.target.closest("[data-admin-module]");
       if (!button || !isAdmin) return;
       activeAdminModule = button.dataset.adminModule;
+      if (activeAdminModule === "workers") adminWorkersLoaded = false;
       activeAdminSection = null;
       editingPersonId = null;
       editingCollectionItem = null;
@@ -2906,7 +3331,14 @@
     elements.adminModuleContent.addEventListener("click", event => {
       const button = event.target.closest("button");
       if (!button) return;
-      if (button.dataset.adminModule) {
+      if (button.dataset.workerAction) {
+        updateApprovedWorker(button);
+      } else if (button.dataset.refreshWorkers !== undefined) {
+        adminWorkersLoaded = false;
+        loadAdminWorkers();
+      } else if (button.dataset.refreshActivity !== undefined) {
+        loadAdminActivity();
+      } else if (button.dataset.adminModule) {
         activeAdminModule = button.dataset.adminModule;
         isAdminPanelOpen = activeAdminModule === "people";
         render();
@@ -3437,6 +3869,7 @@
         return;
       }
       isAdmin = true;
+      notificationIdentity = "local-admin";
       isAdminPanelOpen = true;
       activeAdminModule = "people";
       activeAdminSection = null;
@@ -3490,9 +3923,13 @@
         }
         elements.workerLoginForm.reset();
         setStatus(elements.workerLoginStatus, "", "");
+        notificationIdentity = String(session.user.email || "").toLowerCase();
         entryMode = "choose";
-        if (isAdmin) recordActivity("Inicio de sesión", "Acceso al panel administrativo");
+        if (isAdmin && !REMOTE_INVENTORY_ENABLED) {
+          recordActivity("Inicio de sesión", "Acceso al panel administrativo");
+        }
         render();
+        refreshNotifications().catch(error => console.error("No se pudieron actualizar las notificaciones al iniciar sesión.", error));
         if (isAdmin) elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (error) {
         setStatus(elements.workerLoginStatus, error.message, "error");
@@ -3501,14 +3938,16 @@
 
     elements.workerApplicationForm.addEventListener("submit", async event => {
       event.preventDefault();
-      const email = String(new FormData(elements.workerApplicationForm).get("email") || "").trim();
+      const formData = new FormData(elements.workerApplicationForm);
+      const email = String(formData.get("email") || "").trim();
+      const name = String(formData.get("name") || "").trim();
       const submitButton = elements.workerApplicationForm.querySelector('button[type="submit"]');
       submitButton.disabled = true;
       setStatus(elements.workerApplicationStatus, "Enviando solicitud…", "");
       try {
         const result = await apiRequest("/api/worker-requests", {
           method: "POST",
-          body: { email }
+          body: { email, name }
         });
         setStatus(elements.workerApplicationStatus, result.message || "Solicitud enviada para revisión.", "success");
         elements.workerApplicationForm.reset();
@@ -3566,6 +4005,28 @@
 
     elements.refreshWorkerRequestsButton.addEventListener("click", loadWorkerRequests);
 
+    elements.notificationButton.addEventListener("click", async () => {
+      openDialog(elements.notificationsDialog);
+      setStatus(elements.notificationsStatus, "Cargando notificaciones…", "");
+      try {
+        await refreshNotifications(true);
+      } catch (error) {
+        setStatus(elements.notificationsStatus, error.message, "error");
+      }
+    });
+
+    elements.refreshNotificationsButton.addEventListener("click", async () => {
+      elements.refreshNotificationsButton.disabled = true;
+      setStatus(elements.notificationsStatus, "Actualizando…", "");
+      try {
+        await refreshNotifications(true);
+      } catch (error) {
+        setStatus(elements.notificationsStatus, error.message, "error");
+      } finally {
+        elements.refreshNotificationsButton.disabled = false;
+      }
+    });
+
     document.querySelectorAll("[data-admin-section]").forEach(button => {
       button.addEventListener("click", () => selectAdminSection(button.dataset.adminSection));
     });
@@ -3606,19 +4067,25 @@
       pendingPortalDelete = null;
     });
 
-    document.querySelector("#logoutButton").addEventListener("click", () => {
+    document.querySelector("#logoutButton").addEventListener("click", async () => {
       if (isAdmin) {
         openDialog(elements.logoutDialog);
         return;
       }
       if (isWorker) {
-        recordActivity("Cierre de sesión", "Cierre de la sesión de trabajador");
+        try {
+          await recordActivity("Cierre de sesión", "Cierre de la sesión de trabajador");
+        } catch (error) {
+          console.error("No se pudo registrar el cierre de sesión del trabajador.", error);
+        }
+        notificationIdentity = "visitor";
         isWorker = false;
         workerAccessToken = null;
         activeRoute = "welcome";
         activeInventorySection = "home";
         entryMode = "choose";
         render();
+        refreshNotifications().catch(error => console.error("No se pudieron actualizar las notificaciones al cerrar sesión.", error));
       }
     });
 
@@ -3626,10 +4093,15 @@
       closeDialog(elements.logoutDialog);
     });
 
-    document.querySelector("#confirmLogoutButton").addEventListener("click", () => {
+    document.querySelector("#confirmLogoutButton").addEventListener("click", async () => {
       if (!isAdmin) return;
       closeDialog(elements.logoutDialog);
-      recordActivity("Cierre de sesión", "Cierre de la sesión administrativa de demostración");
+      try {
+        await recordActivity("Cierre de sesión", "Cierre de la sesión administrativa");
+      } catch (error) {
+        console.error("No se pudo registrar el cierre de sesión del administrador.", error);
+      }
+      notificationIdentity = "visitor";
       isAdmin = false;
       adminAccessToken = null;
       isAdminPanelOpen = false;
@@ -3639,6 +4111,7 @@
       entryMode = "choose";
       setStatus(elements.adminStatus, "", "");
       render();
+      refreshNotifications().catch(error => console.error("No se pudieron actualizar las notificaciones al cerrar sesión.", error));
     });
 
     elements.personForm.addEventListener("submit", event => {
@@ -3960,8 +4433,13 @@
             inventory = previousInventory;
             return;
           }
+          recordActivity(
+            "Compra simulada",
+            `${quantity} ${product.unit} de ${product.name} por ${formatUsd(product.price_cents * quantity)}; sin cobro.`
+          );
           render();
         }
+        recordPurchaseNotification(product, quantity);
         setStatus(
           elements.purchaseStatus,
           `Compra simulada registrada: ${quantity} ${product.unit} de ${product.name}. No se realizó ningún cobro; el inventario de demostración se actualizó.`,
@@ -4163,6 +4641,11 @@
     updateConnectionRelationshipField();
     populateCountryOptions();
     render();
+    refreshNotifications().catch(error => console.error("No se pudieron cargar las notificaciones.", error));
+    window.setInterval(() => {
+      refreshNotifications(elements.notificationsDialog.open)
+        .catch(error => console.error("No se pudieron actualizar las notificaciones.", error));
+    }, 60000);
     if (/^[0-9a-f-]{36}$/i.test(PAYMENT_RETURN_ORDER_ID || "")) {
       history.replaceState(null, "", location.pathname);
       if (hasInventoryAccess()) updatePurchaseReturnStatus(PAYMENT_RETURN_ORDER_ID);

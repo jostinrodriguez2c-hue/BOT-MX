@@ -1,4 +1,4 @@
-const { body, getEnv, onlyMethod, publicError, sendJson, supabase } = require("../lib/api");
+const { body, getEnv, onlyMethod, publicError, sendJson, supabase, writeActivity } = require("../lib/api");
 
 async function login(email, password, res) {
   const response = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/token?grant_type=password`, {
@@ -22,6 +22,7 @@ async function login(email, password, res) {
     if (admins.length !== 1) {
       return sendJson(res, 403, { error: "Esta cuenta no tiene permisos de administrador." });
     }
+    await writeActivity(session.user, "admin_login", "Inicio de sesión de administrador");
     return sendJson(res, 200, {
       access_token: session.access_token,
       expires_in: session.expires_in,
@@ -29,15 +30,33 @@ async function login(email, password, res) {
     });
   }
 
+  const [application] = await supabase(
+    `/rest/v1/worker_applications?email=eq.${encodeURIComponent(userEmail)}&status=eq.approved&select=email,name&limit=1`
+  );
+  if (!application) {
+    return sendJson(res, 403, { error: "Esta cuenta no tiene acceso de trabajador aprobado." });
+  }
   const [worker] = await supabase(
     `/rest/v1/worker_users?user_id=eq.${encodeURIComponent(session.user.id)}&email=eq.${encodeURIComponent(userEmail)}&select=user_id&limit=1`
   );
-  const [application] = worker ? await supabase(
-    `/rest/v1/worker_applications?email=eq.${encodeURIComponent(userEmail)}&status=eq.approved&select=email&limit=1`
-  ) : [];
-  if (!worker || !application) {
-    return sendJson(res, 403, { error: "Esta cuenta no tiene acceso de trabajador aprobado." });
+  if (!worker) {
+    const [existingEmailAccount] = await supabase(
+      `/rest/v1/worker_users?email=eq.${encodeURIComponent(userEmail)}&select=user_id&limit=1`
+    );
+    if (existingEmailAccount && existingEmailAccount.user_id !== session.user.id) {
+      return sendJson(res, 403, { error: "Este correo está asociado a otra cuenta de trabajador. Contacta al administrador." });
+    }
+    await supabase("/rest/v1/worker_users", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+      body: JSON.stringify({
+        user_id: session.user.id,
+        email: userEmail,
+        name: application.name || ""
+      })
+    });
   }
+  await writeActivity(session.user, "worker_login", "Inicio de sesión de trabajador");
   return sendJson(res, 200, {
     access_token: session.access_token,
     expires_in: session.expires_in,
@@ -51,7 +70,7 @@ async function register(email, password, res) {
     return sendJson(res, 400, { error: "Escribe un correo válido y una contraseña de al menos 12 caracteres." });
   }
   const [application] = await supabase(
-    `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.approved&select=email&limit=1`
+    `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.approved&select=email,name&limit=1`
   );
   if (!application) {
     return sendJson(res, 403, { error: "Necesitas una solicitud aprobada para crear una cuenta de trabajador." });
@@ -75,11 +94,21 @@ async function register(email, password, res) {
   if (!response.ok || !result.user || !result.user.id) {
     return sendJson(res, 400, { error: "No se pudo crear la cuenta. Revisa el correo o intenta iniciar sesión." });
   }
+  if (Array.isArray(result.user.identities) && result.user.identities.length === 0) {
+    return sendJson(res, 409, {
+      error: "Ya existe una cuenta con ese correo. Inicia sesión; si acabas de registrarte, confirma primero tu correo."
+    });
+  }
   await supabase("/rest/v1/worker_users", {
     method: "POST",
     headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
-    body: JSON.stringify({ user_id: result.user.id, email })
+    body: JSON.stringify({ user_id: result.user.id, email, name: application.name || "" })
   });
+  await writeActivity(
+    { id: result.user.id, email, user_metadata: { full_name: application.name || "" } },
+    "worker_registration",
+    "Creó su cuenta de trabajador"
+  );
   return sendJson(res, 201, {
     ok: true,
     confirmationRequired: !result.session,
@@ -103,6 +132,16 @@ module.exports = async function handler(req, res) {
     }
     return await login(email, payload.password, res);
   } catch (error) {
+    const details = error.details && typeof error.details === "object" ? error.details : {};
+    const databaseMessage = `${error.message || ""} ${details.message || ""} ${details.details || ""}`.toLowerCase();
+    if (
+      ["PGRST204", "PGRST205", "42P01", "42703"].includes(details.code)
+      && ["worker_applications", "worker_users", "activity_events"].some(table => databaseMessage.includes(table))
+    ) {
+      return sendJson(res, 503, {
+        error: "Falta actualizar las tablas de trabajadores en Supabase. Ejecuta el archivo supabase/schema.sql completo y vuelve a intentarlo."
+      });
+    }
     return publicError(error, res);
   }
 };

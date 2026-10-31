@@ -23,17 +23,65 @@ create table if not exists public.admin_users (
 
 create table if not exists public.worker_applications (
   email text primary key check (char_length(email) between 3 and 254),
-  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  name text not null default '',
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'terminated')),
   created_at timestamptz not null default now(),
   reviewed_at timestamptz,
   reviewed_by uuid references auth.users(id) on delete set null
 );
 
+alter table public.worker_applications add column if not exists name text not null default '';
+alter table public.worker_applications drop constraint if exists worker_applications_status_check;
+alter table public.worker_applications
+  add constraint worker_applications_status_check
+  check (status in ('pending', 'approved', 'rejected', 'terminated'));
+
 create table if not exists public.worker_users (
   user_id uuid primary key references auth.users(id) on delete cascade,
   email text not null unique check (char_length(email) between 3 and 254),
+  name text not null default '',
   created_at timestamptz not null default now()
 );
+
+alter table public.worker_users add column if not exists name text not null default '';
+
+create table if not exists public.worker_warnings (
+  id uuid primary key default gen_random_uuid(),
+  email text not null references public.worker_applications(email) on delete cascade,
+  message text not null check (char_length(message) between 1 and 500),
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.activity_events (
+  id uuid primary key default gen_random_uuid(),
+  actor_user_id uuid references auth.users(id) on delete set null,
+  actor_email text not null default '',
+  actor_name text not null default '',
+  event_type text not null check (char_length(event_type) between 1 and 80),
+  summary text not null check (char_length(summary) between 1 and 160),
+  details jsonb not null default '{}'::jsonb,
+  visibility text not null default 'admin' check (visibility in ('public', 'admin', 'worker')),
+  recipient_email text,
+  created_at timestamptz not null default now(),
+  check (visibility <> 'worker' or recipient_email is not null)
+);
+
+create table if not exists public.notification_reads (
+  reader_email text primary key check (char_length(reader_email) between 3 and 254),
+  last_read_at timestamptz not null default now()
+);
+
+alter table public.activity_events enable row level security;
+alter table public.notification_reads enable row level security;
+
+create index if not exists activity_events_visibility_created_idx
+  on public.activity_events (visibility, created_at desc);
+create index if not exists activity_events_actor_created_idx
+  on public.activity_events (actor_email, created_at desc);
+create index if not exists activity_events_recipient_created_idx
+  on public.activity_events (recipient_email, created_at desc)
+  where recipient_email is not null;
 
 create table if not exists public.purchase_orders (
   id uuid primary key default gen_random_uuid(),
@@ -80,14 +128,15 @@ alter table public.product_categories enable row level security;
 alter table public.admin_users enable row level security;
 alter table public.worker_applications enable row level security;
 alter table public.worker_users enable row level security;
+alter table public.worker_warnings enable row level security;
 alter table public.purchase_orders enable row level security;
 alter table public.purchase_rate_limits enable row level security;
 
 revoke all on public.products, public.product_categories, public.admin_users,
-  public.worker_applications, public.worker_users, public.purchase_orders, public.purchase_rate_limits
+  public.worker_applications, public.worker_users, public.worker_warnings, public.activity_events, public.notification_reads, public.purchase_orders, public.purchase_rate_limits
   from anon, authenticated;
 grant all on public.products, public.product_categories, public.admin_users,
-  public.worker_applications, public.worker_users, public.purchase_orders, public.purchase_rate_limits
+  public.worker_applications, public.worker_users, public.worker_warnings, public.activity_events, public.notification_reads, public.purchase_orders, public.purchase_rate_limits
   to service_role;
 
 create or replace function public.create_purchase_request(
@@ -363,6 +412,22 @@ begin
     updated_at = now()
     where id = p_product_id and active = true and stock - reserved >= p_quantity;
   if not found then raise exception 'product_unavailable'; end if;
+
+  insert into public.activity_events (
+    actor_name, event_type, summary, details, visibility
+  ) values (
+    'Visitante',
+    'purchase',
+    'Compra simulada: ' || v_product.name,
+    jsonb_build_object(
+      'product_name', v_product.name,
+      'quantity', p_quantity,
+      'unit', v_product.unit,
+      'total_cents', v_product.price_cents * p_quantity,
+      'currency', 'USD'
+    ),
+    'public'
+  );
 end;
 $$;
 
@@ -380,3 +445,33 @@ grant execute on function public.cancel_purchase_order(uuid) to service_role;
 grant execute on function public.confirm_paid_purchase(uuid, text, integer) to service_role;
 grant execute on function public.register_manual_sale(uuid, integer) to service_role;
 grant execute on function public.register_demo_purchase(uuid, integer, text) to service_role;
+
+create or replace function public.count_unread_notifications(
+  p_reader_email text,
+  p_reader_role text
+) returns bigint
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select count(*)
+  from public.activity_events e
+  where e.created_at > coalesce(
+    (
+      select r.last_read_at
+      from public.notification_reads r
+      where r.reader_email = lower(p_reader_email)
+    ),
+    '-infinity'::timestamptz
+  )
+  and e.recipient_email = lower(p_reader_email)
+  and e.visibility = case
+    when p_reader_role = 'admin' then 'admin'
+    when p_reader_role = 'worker' then 'worker'
+    else ''
+  end;
+$$;
+
+revoke all on function public.count_unread_notifications(text, text) from public, anon, authenticated;
+grant execute on function public.count_unread_notifications(text, text) to service_role;
