@@ -102,6 +102,44 @@ create table if not exists public.worker_users (
 
 alter table public.worker_users add column if not exists name text not null default '';
 
+create table if not exists public.worker_signup_attempts (
+  email text primary key check (char_length(email) between 3 and 254),
+  attempted_at timestamptz not null
+);
+
+create or replace function public.claim_worker_signup(p_email text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text := lower(trim(p_email));
+  v_attempted_at timestamptz;
+  v_retry_seconds integer;
+begin
+  if v_email is null or char_length(v_email) not between 3 and 254 then
+    raise exception 'invalid_signup_email';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext('worker-signup:' || v_email));
+  select attempted_at into v_attempted_at
+    from public.worker_signup_attempts
+    where email = v_email
+    for update;
+
+  if found and v_attempted_at > now() - interval '30 seconds' then
+    v_retry_seconds := ceil(extract(epoch from (v_attempted_at + interval '30 seconds' - now())))::integer;
+    return greatest(v_retry_seconds, 1);
+  end if;
+
+  insert into public.worker_signup_attempts (email, attempted_at)
+    values (v_email, now())
+    on conflict (email) do update set attempted_at = excluded.attempted_at;
+  return 0;
+end;
+$$;
+
 create table if not exists public.worker_warnings (
   id uuid primary key default gen_random_uuid(),
   email text not null references public.worker_applications(email) on delete cascade,
@@ -187,15 +225,16 @@ alter table public.organization_catalogs enable row level security;
 alter table public.worker_roles enable row level security;
 alter table public.worker_applications enable row level security;
 alter table public.worker_users enable row level security;
+alter table public.worker_signup_attempts enable row level security;
 alter table public.worker_warnings enable row level security;
 alter table public.purchase_orders enable row level security;
 alter table public.purchase_rate_limits enable row level security;
 
 revoke all on public.products, public.product_categories, public.admin_users, public.organization_catalogs, public.worker_roles,
-  public.worker_applications, public.worker_users, public.worker_warnings, public.activity_events, public.notification_reads, public.purchase_orders, public.purchase_rate_limits
+  public.worker_applications, public.worker_users, public.worker_signup_attempts, public.worker_warnings, public.activity_events, public.notification_reads, public.purchase_orders, public.purchase_rate_limits
   from anon, authenticated;
 grant all on public.products, public.product_categories, public.admin_users, public.organization_catalogs, public.worker_roles,
-  public.worker_applications, public.worker_users, public.worker_warnings, public.activity_events, public.notification_reads, public.purchase_orders, public.purchase_rate_limits
+  public.worker_applications, public.worker_users, public.worker_signup_attempts, public.worker_warnings, public.activity_events, public.notification_reads, public.purchase_orders, public.purchase_rate_limits
   to service_role;
 
 create or replace function public.create_purchase_request(
@@ -497,6 +536,7 @@ revoke all on function public.cancel_purchase_order(uuid) from public, anon, aut
 revoke all on function public.confirm_paid_purchase(uuid, text, integer) from public, anon, authenticated;
 revoke all on function public.register_manual_sale(uuid, integer) from public, anon, authenticated;
 revoke all on function public.register_demo_purchase(uuid, integer, text) from public, anon, authenticated;
+revoke all on function public.claim_worker_signup(text) from public, anon, authenticated;
 grant execute on function public.create_purchase_request(uuid, integer, text, text, text, text, timestamptz, text) to service_role;
 grant execute on function public.verify_purchase_code(uuid, text) to service_role;
 grant execute on function public.release_expired_orders() to service_role;
@@ -504,6 +544,7 @@ grant execute on function public.cancel_purchase_order(uuid) to service_role;
 grant execute on function public.confirm_paid_purchase(uuid, text, integer) to service_role;
 grant execute on function public.register_manual_sale(uuid, integer) to service_role;
 grant execute on function public.register_demo_purchase(uuid, integer, text) to service_role;
+grant execute on function public.claim_worker_signup(text) to service_role;
 
 create or replace function public.count_unread_notifications(
   p_reader_email text,

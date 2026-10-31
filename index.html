@@ -699,6 +699,7 @@
                 <label>Correo aprobado<input name="email" type="email" autocomplete="email" required></label>
                 <label>Crea tu contraseña<input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
                 <small>Debe tener al menos 12 caracteres. La contraseña la eliges tú y no se comparte con el administrador.</small>
+                <small>Solo se puede crear una cuenta por correo. Si necesitas volver a intentar el registro, espera 30 segundos.</small>
                 <p class="status-message" id="workerRegisterStatus" role="status"></p>
                 <button class="button button-primary" type="submit">Crear cuenta de trabajador</button>
               </form>
@@ -1558,6 +1559,7 @@
     let editingRoleId = null;
     let editingCollectionItem = null;
     let confirmActionResolver = null;
+    let workerRegisterCooldownTimer = null;
     let restoredScrollY = 0;
     let pageSessionReady = false;
     let portalData = loadPortalData();
@@ -1667,9 +1669,36 @@
       if (!response.ok) {
         const error = new Error(result.error || "No se pudo completar la solicitud.");
         error.status = response.status;
+        error.retryAfterSeconds = Number(result.retryAfterSeconds) || 0;
         throw error;
       }
       return result;
+    }
+
+    function startWorkerRegisterCooldown(seconds, message = "") {
+      if (workerRegisterCooldownTimer) window.clearInterval(workerRegisterCooldownTimer);
+      const button = elements.workerRegisterForm.querySelector('button[type="submit"]');
+      const cooldownEndsAt = Date.now() + seconds * 1000;
+      const updateCooldown = () => {
+        const remaining = Math.max(0, Math.ceil((cooldownEndsAt - Date.now()) / 1000));
+        button.disabled = remaining > 0;
+        if (remaining > 0) {
+          const statusMessage = message
+            ? `${message} Podrás volver a intentarlo en ${remaining} segundos.`
+            : `Espera ${remaining} segundos antes de volver a intentarlo con este correo.`;
+          setStatus(elements.workerRegisterStatus, statusMessage, message ? "success" : "error");
+        } else {
+          window.clearInterval(workerRegisterCooldownTimer);
+          workerRegisterCooldownTimer = null;
+          setStatus(
+            elements.workerRegisterStatus,
+            message || "Ya puedes volver a intentarlo con este correo.",
+            message ? "success" : "error"
+          );
+        }
+      };
+      updateCooldown();
+      workerRegisterCooldownTimer = window.setInterval(updateCooldown, 1000);
     }
 
     async function loadRemoteInventory() {
@@ -3635,7 +3664,7 @@
       const email = button.dataset.workerEmail;
       if (action === "dismiss" && !await confirmAction({
         title: "¿Despedir a este trabajador?",
-        message: "Se revocará su acceso al portal. Esta acción se puede revisar con el administrador.",
+        message: "Se revocará su acceso y se eliminará su cuenta actual. Si vuelve a solicitar acceso con el mismo correo y se aprueba, podrá crear una cuenta nueva.",
         detail: email,
         kicker: "Acción de personal",
         confirmLabel: "Sí, despedir",
@@ -3672,7 +3701,7 @@
           setStatus(currentStatus, action === "warn"
             ? "Advertencia registrada."
             : action === "dismiss"
-              ? "Acceso del trabajador revocado."
+              ? "Acceso revocado y cuenta anterior eliminada. Si vuelve a solicitar acceso con el mismo correo y se aprueba, podrá crear una cuenta nueva."
               : result.message || "Acción completada.", "success");
         }
       } catch (error) {
@@ -4946,6 +4975,8 @@
     elements.workerRegisterForm.addEventListener("submit", async event => {
       event.preventDefault();
       const formData = new FormData(elements.workerRegisterForm);
+      const submitButton = elements.workerRegisterForm.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
       setStatus(elements.workerRegisterStatus, "Creando cuenta…", "");
       try {
         const result = await apiRequest("/api/auth", {
@@ -4957,9 +4988,14 @@
           }
         });
         elements.workerRegisterForm.reset();
-        setStatus(elements.workerRegisterStatus, result.message || "Cuenta creada correctamente.", "success");
+        const successMessage = result.message || "Cuenta creada correctamente.";
+        if (result.retryAfterSeconds > 0) startWorkerRegisterCooldown(result.retryAfterSeconds, successMessage);
+        else setStatus(elements.workerRegisterStatus, successMessage, "success");
       } catch (error) {
-        setStatus(elements.workerRegisterStatus, error.message, "error");
+        if (error.retryAfterSeconds > 0) startWorkerRegisterCooldown(error.retryAfterSeconds);
+        else setStatus(elements.workerRegisterStatus, error.message, "error");
+      } finally {
+        if (!workerRegisterCooldownTimer) submitButton.disabled = false;
       }
     });
 

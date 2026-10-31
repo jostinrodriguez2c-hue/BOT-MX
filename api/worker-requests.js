@@ -28,6 +28,28 @@ function normalizeEmail(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+async function deleteWorkerAuthAccount(email) {
+  const [account] = await supabase(
+    `/rest/v1/worker_users?email=eq.${encodeURIComponent(email)}&select=user_id&limit=1`
+  );
+  if (!account) return;
+
+  const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const response = await fetch(
+    `${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/admin/users/${encodeURIComponent(account.user_id)}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`
+      }
+    }
+  );
+  if (!response.ok && response.status !== 404) {
+    throw new Error("No se pudo eliminar la cuenta anterior de Supabase. Inténtalo otra vez antes de permitir un nuevo registro.");
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (!["GET", "POST", "PATCH", "DELETE"].includes(req.method)) {
     res.setHeader("Allow", "GET, POST, PATCH, DELETE");
@@ -150,7 +172,30 @@ module.exports = async function handler(req, res) {
         return sendJson(res, 409, { error: "Esta solicitud ya fue aprobada. Crea tu cuenta en la sección Trabajador." });
       }
       if (existing && existing.status === "terminated") {
-        return sendJson(res, 409, { error: "Esta solicitud fue cerrada por el administrador." });
+        try {
+          await deleteWorkerAuthAccount(email);
+        } catch (error) {
+          console.error("No se pudo limpiar la cuenta del trabajador despedido.", error.message);
+          return sendJson(res, 503, { error: error.message });
+        }
+        await supabase(`/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.terminated`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            name,
+            status: "pending",
+            created_at: new Date().toISOString(),
+            reviewed_at: null,
+            reviewed_by: null,
+            department: "",
+            position: "",
+            company: "",
+            role_id: null
+          })
+        });
+        return sendJson(res, 200, {
+          ok: true,
+          message: "Nueva solicitud enviada. Cuando el administrador la apruebe, podrás crear una cuenta nueva con este correo."
+        });
       }
       if (existing && existing.status === "pending") {
         await supabase(`/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}`, {
@@ -379,6 +424,12 @@ module.exports = async function handler(req, res) {
         })
       });
       if (!dismissed.length) return sendJson(res, 409, { error: "El trabajador ya no está activo." });
+      try {
+        await deleteWorkerAuthAccount(email);
+      } catch (error) {
+        console.error("No se pudo eliminar la cuenta del trabajador despedido.", error.message);
+        return sendJson(res, 503, { error: error.message });
+      }
       await writeActivity(admin, "worker_dismissal", "Despidió a un trabajador", { email });
       return sendJson(res, 200, { ok: true, action: "dismiss" });
     }

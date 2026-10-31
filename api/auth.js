@@ -77,6 +77,61 @@ async function login(email, password, res) {
   });
 }
 
+async function resendWorkerSignup(email, res) {
+  let response;
+  try {
+    response = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/resend`, {
+      method: "POST",
+      headers: {
+        apikey: getEnv("SUPABASE_ANON_KEY"),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ type: "signup", email })
+    });
+  } catch (error) {
+    console.error("No se pudo conectar con Supabase para reenviar la confirmación.", error.message);
+    return sendJson(res, 502, {
+      error: "No se pudo conectar para enviar el enlace. Inténtalo de nuevo en 30 segundos.",
+      retryAfterSeconds: 30
+    });
+  }
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    return sendJson(res, 502, {
+      error: "Supabase devolvió una respuesta no válida. Inténtalo de nuevo en 30 segundos.",
+      retryAfterSeconds: 30
+    });
+  }
+  const providerError = `${result && (result.error_code || result.code) || ""} ${result && (result.msg || result.message || result.error_description) || ""}`.toLowerCase();
+  if (!response.ok && /already confirmed|user is confirmed/.test(providerError)) {
+    return sendJson(res, 200, {
+      ok: true,
+      retryAfterSeconds: 30,
+      message: "Esta cuenta ya está confirmada. Inicia sesión con ese correo."
+    });
+  }
+  if (!response.ok && /rate.?limit|email.*limit|too many requests/.test(providerError)) {
+    res.setHeader("Retry-After", "30");
+    return sendJson(res, 429, {
+      error: "Espera 30 segundos antes de volver a solicitar el enlace con este correo.",
+      retryAfterSeconds: 30
+    });
+  }
+  if (!response.ok) {
+    return sendJson(res, 502, {
+      error: "No se pudo enviar el enlace de confirmación. Inténtalo de nuevo en 30 segundos.",
+      retryAfterSeconds: 30
+    });
+  }
+  return sendJson(res, 200, {
+    ok: true,
+    retryAfterSeconds: 30,
+    message: "Si la cuenta aún necesita confirmarse, Supabase enviará un nuevo enlace. Si ya está confirmada, inicia sesión."
+  });
+}
+
 async function register(email, password, res) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254
     || typeof password !== "string" || password.length < 12 || password.length > 128) {
@@ -88,48 +143,77 @@ async function register(email, password, res) {
   if (!application) {
     return sendJson(res, 403, { error: "Necesitas una solicitud aprobada para crear una cuenta de trabajador." });
   }
+  const retryAfterSeconds = await supabase("/rest/v1/rpc/claim_worker_signup", {
+    method: "POST",
+    body: JSON.stringify({ p_email: email })
+  });
+  if (Number(retryAfterSeconds) > 0) {
+    const seconds = Math.ceil(Number(retryAfterSeconds));
+    res.setHeader("Retry-After", String(seconds));
+    return sendJson(res, 429, {
+      error: `Espera ${seconds} segundos antes de volver a intentarlo con este correo.`,
+      retryAfterSeconds: seconds
+    });
+  }
   const [existing] = await supabase(
     `/rest/v1/worker_users?email=eq.${encodeURIComponent(email)}&select=user_id&limit=1`
   );
-  if (existing) {
-    return sendJson(res, 409, {
-      error: "Ese correo ya tiene una cuenta de trabajador. Inicia sesión; si acabas de registrarte, confirma primero el correo de Supabase."
+  if (existing) return await resendWorkerSignup(email, res);
+
+  let response;
+  try {
+    response = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/signup`, {
+      method: "POST",
+      headers: {
+        apikey: getEnv("SUPABASE_ANON_KEY"),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email, password })
+    });
+  } catch (error) {
+    console.error("No se pudo conectar con Supabase para crear la cuenta.", error.message);
+    return sendJson(res, 502, {
+      error: "No se pudo conectar para crear la cuenta. Inténtalo de nuevo en 30 segundos.",
+      retryAfterSeconds: 30
     });
   }
-
-  const response = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/signup`, {
-    method: "POST",
-    headers: {
-      apikey: getEnv("SUPABASE_ANON_KEY"),
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ email, password })
-  });
-  const result = await response.json();
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    return sendJson(res, 502, {
+      error: "Supabase devolvió una respuesta no válida. Inténtalo de nuevo en 30 segundos.",
+      retryAfterSeconds: 30
+    });
+  }
   const authResult = result && typeof result === "object" ? result : {};
   if (authResult.user && Array.isArray(authResult.user.identities) && authResult.user.identities.length === 0) {
-    return sendJson(res, 409, {
-      error: "Ese correo ya tiene una cuenta. Inicia sesión; si todavía no confirmaste tu registro, revisa el correo de Supabase."
-    });
+    return await resendWorkerSignup(email, res);
   }
   if (!response.ok || !authResult.user || !authResult.user.id) {
     const providerError = `${authResult.error_code || authResult.code || ""} ${authResult.msg || authResult.message || authResult.error_description || ""}`.toLowerCase();
     if (/rate.?limit|email.*limit|too many requests/.test(providerError)) {
-      return sendJson(res, 429, { error: "Se enviaron demasiados correos de registro. Espera un momento y vuelve a intentarlo." });
+      res.setHeader("Retry-After", "30");
+      return sendJson(res, 429, {
+        error: "Espera 30 segundos antes de volver a intentarlo con este correo.",
+        retryAfterSeconds: 30
+      });
     }
     if (/password|weak/.test(providerError)) {
-      return sendJson(res, 400, { error: "Supabase rechazó la contraseña. Usa una contraseña más segura de al menos 12 caracteres." });
+      return sendJson(res, 400, {
+        error: "Supabase rechazó la contraseña. Usa una contraseña más segura de al menos 12 caracteres.",
+        retryAfterSeconds: 30
+      });
     }
     if (/already registered|already exists|email_exists|user_already_exists/.test(providerError)) {
-      return sendJson(res, 409, {
-        error: "Ese correo ya tiene una cuenta. Inicia sesión; si todavía no confirmaste tu registro, revisa el correo de Supabase."
-      });
+      return await resendWorkerSignup(email, res);
     }
     if (/signup.*disabled|signups not allowed/.test(providerError)) {
       return sendJson(res, 503, { error: "La creación de cuentas está desactivada en Supabase. Contacta al administrador." });
     }
     return sendJson(res, response.ok ? 502 : response.status, {
-      error: "Supabase no pudo crear la cuenta. Verifica el correo y la contraseña e inténtalo de nuevo."
+      error: "Supabase no pudo crear la cuenta. Verifica el correo y la contraseña e inténtalo de nuevo.",
+      retryAfterSeconds: 30
     });
   }
   let workerProfileSaved = true;
@@ -154,6 +238,7 @@ async function register(email, password, res) {
   }
   return sendJson(res, 201, {
     ok: true,
+    retryAfterSeconds: 30,
     confirmationRequired: !authResult.session,
     message: !workerProfileSaved
       ? "Tu cuenta se creó, pero no se pudo completar el registro interno. Confirma tu correo e intenta iniciar sesión; si no puedes, contacta al administrador."
@@ -234,8 +319,8 @@ module.exports = async function handler(req, res) {
     const details = error.details && typeof error.details === "object" ? error.details : {};
     const databaseMessage = `${error.message || ""} ${details.message || ""} ${details.details || ""}`.toLowerCase();
     if (
-      ["PGRST204", "PGRST205", "42P01", "42703"].includes(details.code)
-      && ["worker_applications", "worker_users", "worker_roles", "activity_events"].some(table => databaseMessage.includes(table))
+      ["PGRST202", "PGRST204", "PGRST205", "42P01", "42703"].includes(details.code)
+      && ["worker_applications", "worker_users", "worker_roles", "activity_events", "worker_signup_attempts", "claim_worker_signup"].some(table => databaseMessage.includes(table))
     ) {
       return sendJson(res, 503, {
         error: "Falta actualizar las tablas de trabajadores en Supabase. Ejecuta el archivo supabase/schema.sql completo y vuelve a intentarlo."
