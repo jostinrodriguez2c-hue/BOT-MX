@@ -1,4 +1,4 @@
-const { body, onlyMethod, publicError, requireInventoryAccess, sendJson, supabase } = require("../lib/api");
+const { body, onlyMethod, publicError, requireAnyWorkerPermission, requireWorkerPermission, sendJson, supabase } = require("../lib/api");
 
 module.exports = async function handler(req, res) {
   if (!["GET", "POST", "DELETE"].includes(req.method)) {
@@ -6,12 +6,13 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: "Method not allowed." });
   }
   try {
-    await requireInventoryAccess(req);
     if (req.method === "GET") {
+      await requireAnyWorkerPermission(req, ["inventory_view", "sales_register", "products_manage"]);
       return sendJson(res, 200, {
         categories: await supabase("/rest/v1/product_categories?select=name&order=name.asc")
       });
     }
+    await requireWorkerPermission(req, "products_manage");
     const payload = body(req);
     const name = typeof payload.name === "string" ? payload.name.trim() : "";
     if (!name || name.length > 80) return sendJson(res, 400, { error: "Escribe una categoría de hasta 80 caracteres." });

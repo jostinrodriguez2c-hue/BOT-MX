@@ -21,16 +21,73 @@ create table if not exists public.admin_users (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.organization_catalogs (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null check (kind in ('company', 'department', 'job')),
+  name text not null check (char_length(name) between 1 and 120),
+  description text not null default '',
+  created_at timestamptz not null default now(),
+  unique (kind, name)
+);
+
+create table if not exists public.worker_roles (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique check (char_length(name) between 1 and 80),
+  permissions text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  check (permissions <@ array[
+    'inventory_view',
+    'sales_register',
+    'products_manage',
+    'workers_directory',
+    'applications_review',
+    'catalog_manage'
+  ]::text[])
+);
+
+insert into public.worker_roles (name, permissions)
+values (
+  'Trabajador',
+  array['inventory_view', 'sales_register', 'products_manage', 'workers_directory']::text[]
+)
+on conflict (name) do update set permissions = excluded.permissions;
+
 create table if not exists public.worker_applications (
   email text primary key check (char_length(email) between 3 and 254),
   name text not null default '',
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected', 'terminated')),
   created_at timestamptz not null default now(),
   reviewed_at timestamptz,
-  reviewed_by uuid references auth.users(id) on delete set null
+  reviewed_by uuid references auth.users(id) on delete set null,
+  department text not null default '',
+  position text not null default '',
+  company text not null default '',
+  role_id uuid references public.worker_roles(id) on delete set null
 );
 
 alter table public.worker_applications add column if not exists name text not null default '';
+alter table public.worker_applications add column if not exists department text not null default '';
+alter table public.worker_applications add column if not exists position text not null default '';
+alter table public.worker_applications add column if not exists company text not null default '';
+alter table public.worker_applications add column if not exists role_id uuid references public.worker_roles(id) on delete set null;
+insert into public.organization_catalogs (kind, name)
+select 'department', trim(department)
+from public.worker_applications
+where trim(department) <> ''
+on conflict (kind, name) do nothing;
+insert into public.organization_catalogs (kind, name)
+select 'job', trim(position)
+from public.worker_applications
+where trim(position) <> ''
+on conflict (kind, name) do nothing;
+insert into public.organization_catalogs (kind, name)
+select 'company', trim(company)
+from public.worker_applications
+where trim(company) <> ''
+on conflict (kind, name) do nothing;
+update public.worker_applications
+set role_id = (select id from public.worker_roles where name = 'Trabajador')
+where status = 'approved' and role_id is null;
 alter table public.worker_applications drop constraint if exists worker_applications_status_check;
 alter table public.worker_applications
   add constraint worker_applications_status_check
@@ -126,16 +183,18 @@ create table if not exists public.purchase_rate_limits (
 alter table public.products enable row level security;
 alter table public.product_categories enable row level security;
 alter table public.admin_users enable row level security;
+alter table public.organization_catalogs enable row level security;
+alter table public.worker_roles enable row level security;
 alter table public.worker_applications enable row level security;
 alter table public.worker_users enable row level security;
 alter table public.worker_warnings enable row level security;
 alter table public.purchase_orders enable row level security;
 alter table public.purchase_rate_limits enable row level security;
 
-revoke all on public.products, public.product_categories, public.admin_users,
+revoke all on public.products, public.product_categories, public.admin_users, public.organization_catalogs, public.worker_roles,
   public.worker_applications, public.worker_users, public.worker_warnings, public.activity_events, public.notification_reads, public.purchase_orders, public.purchase_rate_limits
   from anon, authenticated;
-grant all on public.products, public.product_categories, public.admin_users,
+grant all on public.products, public.product_categories, public.admin_users, public.organization_catalogs, public.worker_roles,
   public.worker_applications, public.worker_users, public.worker_warnings, public.activity_events, public.notification_reads, public.purchase_orders, public.purchase_rate_limits
   to service_role;
 

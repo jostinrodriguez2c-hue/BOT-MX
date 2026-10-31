@@ -1,4 +1,4 @@
-const { body, onlyMethod, publicError, requireInventoryAccess, sendJson, supabase } = require("../lib/api");
+const { body, onlyMethod, publicError, requireAnyWorkerPermission, requireWorkerPermission, sendJson, supabase } = require("../lib/api");
 
 function validProduct(value, partial) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -18,11 +18,12 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 405, { error: "Method not allowed." });
   }
   try {
-    await requireInventoryAccess(req);
     if (req.method === "GET") {
+      await requireAnyWorkerPermission(req, ["inventory_view", "sales_register", "products_manage"]);
       const products = await supabase("/rest/v1/products?active=eq.true&select=*&order=name.asc");
       return sendJson(res, 200, { products });
     }
+    await requireWorkerPermission(req, "products_manage");
     const payload = body(req);
     if (req.method === "POST") {
       if (!validProduct(payload, false)) return sendJson(res, 400, { error: "Revisa los datos del producto y el precio en centavos de dólar." });

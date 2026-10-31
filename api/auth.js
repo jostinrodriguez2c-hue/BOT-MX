@@ -31,7 +31,7 @@ async function login(email, password, res) {
   }
 
   const [application] = await supabase(
-    `/rest/v1/worker_applications?email=eq.${encodeURIComponent(userEmail)}&status=eq.approved&select=email,name&limit=1`
+    `/rest/v1/worker_applications?email=eq.${encodeURIComponent(userEmail)}&status=eq.approved&select=email,name,role_id&limit=1`
   );
   if (!application) {
     return sendJson(res, 403, { error: "Esta cuenta no tiene acceso de trabajador aprobado." });
@@ -56,11 +56,15 @@ async function login(email, password, res) {
       })
     });
   }
+  const [role] = application.role_id ? await supabase(
+    `/rest/v1/worker_roles?id=eq.${encodeURIComponent(application.role_id)}&select=permissions&limit=1`
+  ) : [];
+  const permissions = Array.isArray(role && role.permissions) ? role.permissions : [];
   await writeActivity(session.user, "worker_login", "Inicio de sesión de trabajador");
   return sendJson(res, 200, {
     access_token: session.access_token,
     expires_in: session.expires_in,
-    user: { email: userEmail, role: "worker" }
+    user: { email: userEmail, role: "worker", permissions }
   });
 }
 
@@ -118,10 +122,50 @@ async function register(email, password, res) {
   });
 }
 
+async function updateWorkerPassword(recoveryToken, password, res) {
+  if (typeof recoveryToken !== "string" || recoveryToken.length < 20 || recoveryToken.length > 4096
+    || typeof password !== "string" || password.length < 12 || password.length > 128) {
+    return sendJson(res, 400, { error: "El enlace no es válido o la contraseña tiene menos de 12 caracteres." });
+  }
+  const base = getEnv("SUPABASE_URL").replace(/\/+$/, "");
+  const headers = {
+    apikey: getEnv("SUPABASE_ANON_KEY"),
+    Authorization: `Bearer ${recoveryToken}`,
+    "Content-Type": "application/json"
+  };
+  const userResponse = await fetch(`${base}/auth/v1/user`, { headers });
+  if (!userResponse.ok) {
+    return sendJson(res, 401, { error: "El enlace venció o ya se utilizó. Solicita uno nuevo al administrador." });
+  }
+  const user = await userResponse.json();
+  const email = typeof user.email === "string" ? user.email.toLowerCase() : "";
+  const [worker] = await supabase(
+    `/rest/v1/worker_users?user_id=eq.${encodeURIComponent(user.id)}&email=eq.${encodeURIComponent(email)}&select=user_id&limit=1`
+  );
+  const [application] = worker ? await supabase(
+    `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.approved&select=email&limit=1`
+  ) : [];
+  if (!worker || !application) {
+    return sendJson(res, 403, { error: "Este enlace no corresponde a una cuenta de trabajador activa." });
+  }
+  const updateResponse = await fetch(`${base}/auth/v1/user`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ password })
+  });
+  if (!updateResponse.ok) {
+    return sendJson(res, 400, { error: "No se pudo actualizar la contraseña. Solicita un enlace nuevo." });
+  }
+  return sendJson(res, 200, { ok: true, message: "Contraseña actualizada. Ya puedes iniciar sesión." });
+}
+
 module.exports = async function handler(req, res) {
   if (!onlyMethod(req, res, "POST")) return;
   try {
     const payload = body(req);
+    if (payload.action === "update_password") {
+      return await updateWorkerPassword(payload.recoveryToken, payload.password, res);
+    }
     const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
     if (!email || typeof payload.password !== "string" || !payload.password) {
       return sendJson(res, 400, { error: "Escribe el correo y la contraseña de tu cuenta." });
@@ -136,7 +180,7 @@ module.exports = async function handler(req, res) {
     const databaseMessage = `${error.message || ""} ${details.message || ""} ${details.details || ""}`.toLowerCase();
     if (
       ["PGRST204", "PGRST205", "42P01", "42703"].includes(details.code)
-      && ["worker_applications", "worker_users", "activity_events"].some(table => databaseMessage.includes(table))
+      && ["worker_applications", "worker_users", "worker_roles", "activity_events"].some(table => databaseMessage.includes(table))
     ) {
       return sendJson(res, 503, {
         error: "Falta actualizar las tablas de trabajadores en Supabase. Ejecuta el archivo supabase/schema.sql completo y vuelve a intentarlo."

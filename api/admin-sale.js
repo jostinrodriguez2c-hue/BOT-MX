@@ -1,9 +1,9 @@
-const { body, onlyMethod, publicError, requireInventoryAccess, rpc, sendJson } = require("../lib/api");
+const { body, onlyMethod, publicError, requireWorkerPermission, rpc, sendJson } = require("../lib/api");
 
 module.exports = async function handler(req, res) {
   if (!onlyMethod(req, res, "POST")) return;
   try {
-    await requireInventoryAccess(req);
+    await requireWorkerPermission(req, "sales_register");
     const payload = body(req);
     if (typeof payload.product_id !== "string" || !Number.isSafeInteger(payload.quantity) || payload.quantity < 1) {
       return sendJson(res, 400, { error: "Selecciona un producto y una cantidad válida." });
