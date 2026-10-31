@@ -1718,8 +1718,7 @@
         setStatus(elements.workerRequestsStatus, action === "approve" ? "Solicitud aceptada." : "Solicitud rechazada.", "success");
         if (action === "approve" && activeAdminModule === "people") {
           await loadAdminWorkers({
-            listId: "adminPeopleWorkersList",
-            statusId: "adminPeopleWorkersStatus",
+            statusId: "adminPeopleAssignmentsStatus",
             assignmentListId: "adminPeopleAssignmentsList"
           });
         } else if (action === "approve" && activeAdminModule === "workers") {
@@ -3125,21 +3124,12 @@
         assignmentsSection.className = "approved-workers-section";
         assignmentsSection.innerHTML = `<h2>Datos laborales de Personas</h2>
           <p>Asigna departamento, cargo y empresa a cada persona desde aquí.</p>
-          <button class="button button-secondary button-small" type="button" data-refresh-workers data-workers-list="adminPeopleWorkersList" data-workers-status="adminPeopleWorkersStatus" data-assignments-list="adminPeopleAssignmentsList">Actualizar personas</button>
+          <button class="button button-secondary button-small" type="button" data-refresh-workers data-workers-status="adminPeopleAssignmentsStatus" data-assignments-list="adminPeopleAssignmentsList">Actualizar personas</button>
           <p class="status-message" id="adminPeopleAssignmentsStatus" role="status" aria-live="polite"></p>
           <div class="worker-requests-list approved-workers-section" id="adminPeopleAssignmentsList" aria-live="polite"><p>Cargando personas…</p></div>`;
         elements.adminModuleContent.append(assignmentsSection);
-        const workersSection = document.createElement("section");
-        workersSection.className = "approved-workers-section";
-        workersSection.innerHTML = `<h2>Trabajadores aprobados</h2>
-          <p>Al aprobar una solicitud, el nombre, correo y estado de la cuenta del trabajador aparecen aquí. Las contraseñas son privadas y nunca se muestran.</p>
-          <button class="button button-secondary button-small" type="button" data-refresh-workers data-workers-list="adminPeopleWorkersList" data-workers-status="adminPeopleWorkersStatus" data-assignments-list="adminPeopleAssignmentsList">Actualizar trabajadores</button>
-          <p class="status-message" id="adminPeopleWorkersStatus" role="status" aria-live="polite"></p>
-          <div class="worker-requests-list" id="adminPeopleWorkersList" aria-live="polite"><p>Cargando trabajadores…</p></div>`;
-        elements.adminModuleContent.append(workersSection);
         loadAdminWorkers({
-          listId: "adminPeopleWorkersList",
-          statusId: "adminPeopleWorkersStatus",
+          statusId: "adminPeopleAssignmentsStatus",
           assignmentListId: "adminPeopleAssignmentsList"
         });
         return;
@@ -3463,10 +3453,9 @@
         });
         adminWorkersLoaded = false;
         const refreshed = await loadAdminWorkers({
-            listId: "adminPeopleWorkersList",
-            statusId: "adminPeopleWorkersStatus",
-            assignmentListId: workersList.id === "adminPeopleAssignmentsList" ? workersList.id : "adminPeopleAssignmentsList"
-          });
+          statusId: "adminPeopleAssignmentsStatus",
+          assignmentListId: workersList.id === "adminPeopleAssignmentsList" ? workersList.id : ""
+        });
         if (status && refreshed) setStatus(status, "Datos laborales actualizados.", "success");
       } catch (error) {
         if (status) setStatus(status, error.message, "error");
