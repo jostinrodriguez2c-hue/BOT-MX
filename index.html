@@ -256,8 +256,15 @@
     .manage-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem; border: 1px solid #e8ebf3; border-radius: 12px; background: #fff; }
     .manage-row-info { min-width: 0; }
     .manage-empty { margin: 0; padding: 1.2rem; border: 1px dashed #d5dcea; border-radius: 12px; color: var(--muted); text-align: center; }
-    .owner-quick-nav { position: fixed; z-index: 20; top: 50%; right: 12px; display: grid; width: min(190px, calc(100vw - 24px)); gap: .55rem; padding: .65rem; border: 1px solid #293650; border-radius: 18px; background: #0e1625ed; box-shadow: 0 16px 40px #0006; transform: translateY(-50%); }
-    .owner-quick-nav .button { min-height: 42px; white-space: nowrap; }
+    .owner-quick-nav { position: fixed; z-index: 30; top: 14px; right: 14px; }
+    .owner-quick-toggle { min-height: 42px; padding: .55rem .9rem; border: 1px solid #344563; border-radius: 13px; color: var(--ink); background: #111b2d; box-shadow: 0 8px 24px #0005; font: inherit; font-weight: 750; cursor: pointer; }
+    .owner-quick-toggle:hover, .owner-quick-toggle:focus-visible { border-color: #7189ff; background: #1b2942; }
+    .owner-quick-links { position: absolute; top: calc(100% + .55rem); right: 0; display: grid; width: min(210px, calc(100vw - 28px)); gap: .5rem; padding: .6rem; border: 1px solid #293650; border-radius: 16px; background: #0e1625f5; box-shadow: 0 16px 40px #0007; opacity: 0; visibility: hidden; transform: translateY(-6px); transition: opacity .16s ease, transform .16s ease, visibility .16s; }
+    .owner-quick-nav.is-open .owner-quick-links { opacity: 1; visibility: visible; transform: translateY(0); }
+    @media (hover: hover) {
+      .owner-quick-nav:hover .owner-quick-links { opacity: 1; visibility: visible; transform: translateY(0); }
+    }
+    .owner-quick-links .button { min-height: 42px; white-space: nowrap; }
     .org-catalog-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
     .role-permission-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: .65rem; grid-column: 1 / -1; }
     .role-permission-list label { display: flex; align-items: flex-start; gap: .5rem; padding: .65rem; border: 1px solid var(--line); border-radius: 10px; }
@@ -462,8 +469,8 @@
       .admin-side-nav { grid-template-columns: repeat(2,minmax(0,1fr)); }
       .generic-form { grid-template-columns: 1fr; }
       .generic-form .wide { grid-column: auto; }
-      .owner-quick-nav { top: auto; right: 8px; bottom: 8px; left: 8px; display: flex; width: auto; justify-content: center; overflow-x: auto; transform: none; }
-      .owner-quick-nav .button { min-width: max-content; min-height: 38px; padding: .45rem .6rem; font-size: .75rem; }
+      .owner-quick-nav { top: 10px; right: 10px; }
+      .owner-quick-toggle { min-height: 40px; }
       .role-permission-list { grid-template-columns: 1fr; }
     }
 
@@ -1120,10 +1127,13 @@
   </div>
 
   <nav class="owner-quick-nav" id="ownerQuickNav" aria-label="Administración exclusiva" hidden>
-    <button class="button button-secondary button-small" type="button" data-owner-catalog="company">Empresas</button>
-    <button class="button button-secondary button-small" type="button" data-owner-catalog="job">Cargos</button>
-    <button class="button button-secondary button-small" type="button" data-owner-catalog="department">Departamentos</button>
-    <button class="button button-primary button-small" type="button" data-owner-catalog="roles">Roles y permisos</button>
+    <button class="owner-quick-toggle" id="ownerQuickToggle" type="button" aria-expanded="false" aria-controls="ownerQuickLinks">☰ Catálogos</button>
+    <div class="owner-quick-links" id="ownerQuickLinks">
+      <button class="button button-secondary button-small" type="button" data-owner-catalog="company">Empresas</button>
+      <button class="button button-secondary button-small" type="button" data-owner-catalog="job">Cargos</button>
+      <button class="button button-secondary button-small" type="button" data-owner-catalog="department">Departamentos</button>
+      <button class="button button-primary button-small" type="button" data-owner-catalog="roles">Roles y permisos</button>
+    </div>
   </nav>
 
   <dialog id="localAdminDialog" aria-labelledby="localAdminDialogTitle">
@@ -1362,6 +1372,7 @@
       adminView: document.querySelector("#adminView"),
       adminModuleContent: document.querySelector("#adminModuleContent"),
       ownerQuickNav: document.querySelector("#ownerQuickNav"),
+      ownerQuickToggle: document.querySelector("#ownerQuickToggle"),
       siteNav: document.querySelector("#siteNav"),
       homeBackButton: document.querySelector("#homeBackButton"),
       routeViews: [...document.querySelectorAll(".route-view")],
@@ -3945,6 +3956,11 @@
     });
 
     elements.ownerQuickNav.addEventListener("click", event => {
+      if (event.target.closest("#ownerQuickToggle")) {
+        const isOpen = elements.ownerQuickNav.classList.toggle("is-open");
+        elements.ownerQuickToggle.setAttribute("aria-expanded", String(isOpen));
+        return;
+      }
       const button = event.target.closest("[data-owner-catalog]");
       if (!button || !isAdmin) return;
       activeRoute = "admin";
@@ -3953,7 +3969,20 @@
       editingOrganizationCatalogId = null;
       editingRoleId = null;
       isAdminPanelOpen = false;
+      elements.ownerQuickNav.classList.remove("is-open");
+      elements.ownerQuickToggle.setAttribute("aria-expanded", "false");
       render();
+    });
+    document.addEventListener("click", event => {
+      if (elements.ownerQuickNav.contains(event.target)) return;
+      elements.ownerQuickNav.classList.remove("is-open");
+      elements.ownerQuickToggle.setAttribute("aria-expanded", "false");
+    });
+    elements.ownerQuickNav.addEventListener("keydown", event => {
+      if (event.key !== "Escape") return;
+      elements.ownerQuickNav.classList.remove("is-open");
+      elements.ownerQuickToggle.setAttribute("aria-expanded", "false");
+      elements.ownerQuickToggle.focus();
     });
 
     elements.adminModuleContent.addEventListener("click", event => {
