@@ -92,7 +92,9 @@ async function register(email, password, res) {
     `/rest/v1/worker_users?email=eq.${encodeURIComponent(email)}&select=user_id&limit=1`
   );
   if (existing) {
-    return sendJson(res, 409, { error: "Ya existe una cuenta de trabajador con ese correo. Inicia sesión." });
+    return sendJson(res, 409, {
+      error: "Ese correo ya tiene una cuenta de trabajador. Inicia sesión; si acabas de registrarte, confirma primero el correo de Supabase."
+    });
   }
 
   const response = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/signup`, {
@@ -104,30 +106,60 @@ async function register(email, password, res) {
     body: JSON.stringify({ email, password })
   });
   const result = await response.json();
-  if (!response.ok || !result.user || !result.user.id) {
-    return sendJson(res, 400, { error: "No se pudo crear la cuenta. Revisa el correo o intenta iniciar sesión." });
-  }
-  if (Array.isArray(result.user.identities) && result.user.identities.length === 0) {
+  const authResult = result && typeof result === "object" ? result : {};
+  if (authResult.user && Array.isArray(authResult.user.identities) && authResult.user.identities.length === 0) {
     return sendJson(res, 409, {
-      error: "Ya existe una cuenta con ese correo. Inicia sesión; si acabas de registrarte, confirma primero tu correo."
+      error: "Ese correo ya tiene una cuenta. Inicia sesión; si todavía no confirmaste tu registro, revisa el correo de Supabase."
     });
   }
-  await supabase("/rest/v1/worker_users", {
-    method: "POST",
-    headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
-    body: JSON.stringify({ user_id: result.user.id, email, name: application.name || "" })
-  });
-  await writeActivity(
-    { id: result.user.id, email, user_metadata: { full_name: application.name || "" } },
-    "worker_registration",
-    "Creó su cuenta de trabajador"
-  );
+  if (!response.ok || !authResult.user || !authResult.user.id) {
+    const providerError = `${authResult.error_code || authResult.code || ""} ${authResult.msg || authResult.message || authResult.error_description || ""}`.toLowerCase();
+    if (/rate.?limit|email.*limit|too many requests/.test(providerError)) {
+      return sendJson(res, 429, { error: "Se enviaron demasiados correos de registro. Espera un momento y vuelve a intentarlo." });
+    }
+    if (/password|weak/.test(providerError)) {
+      return sendJson(res, 400, { error: "Supabase rechazó la contraseña. Usa una contraseña más segura de al menos 12 caracteres." });
+    }
+    if (/already registered|already exists|email_exists|user_already_exists/.test(providerError)) {
+      return sendJson(res, 409, {
+        error: "Ese correo ya tiene una cuenta. Inicia sesión; si todavía no confirmaste tu registro, revisa el correo de Supabase."
+      });
+    }
+    if (/signup.*disabled|signups not allowed/.test(providerError)) {
+      return sendJson(res, 503, { error: "La creación de cuentas está desactivada en Supabase. Contacta al administrador." });
+    }
+    return sendJson(res, response.ok ? 502 : response.status, {
+      error: "Supabase no pudo crear la cuenta. Verifica el correo y la contraseña e inténtalo de nuevo."
+    });
+  }
+  let workerProfileSaved = true;
+  try {
+    await supabase("/rest/v1/worker_users", {
+      method: "POST",
+      headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
+      body: JSON.stringify({ user_id: authResult.user.id, email, name: application.name || "" })
+    });
+  } catch (error) {
+    workerProfileSaved = false;
+    console.error("No se pudo vincular la cuenta creada con worker_users.", error.message);
+  }
+  try {
+    await writeActivity(
+      { id: authResult.user.id, email, user_metadata: { full_name: application.name || "" } },
+      "worker_registration",
+      "Creó su cuenta de trabajador"
+    );
+  } catch (error) {
+    console.error("No se pudo registrar la actividad de creación de cuenta.", error.message);
+  }
   return sendJson(res, 201, {
     ok: true,
-    confirmationRequired: !result.session,
-    message: result.session
-      ? "Cuenta creada. Ya puedes iniciar sesión."
-      : "Cuenta creada. Confirma tu correo desde el mensaje de Supabase y luego inicia sesión."
+    confirmationRequired: !authResult.session,
+    message: !workerProfileSaved
+      ? "Tu cuenta se creó, pero no se pudo completar el registro interno. Confirma tu correo e intenta iniciar sesión; si no puedes, contacta al administrador."
+      : authResult.session
+        ? "Cuenta creada. Ya puedes iniciar sesión."
+        : "Cuenta creada. Confirma tu correo desde el mensaje de Supabase y luego inicia sesión."
   });
 }
 
