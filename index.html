@@ -512,6 +512,13 @@
     .approved-worker-details span, .approved-worker-details small { color: var(--muted); overflow-wrap: anywhere; }
     .approved-worker-actions { display: grid; min-width: min(230px, 100%); gap: .45rem; }
     .approved-worker-actions input { min-width: 0; padding: .55rem; border: 1px solid #34425d; border-radius: 8px; color: var(--ink); background: #101827; }
+    .approved-worker-actions select { min-width: 0; padding: .55rem; border: 1px solid #34425d; border-radius: 8px; color: var(--ink); background: #101827; }
+    .worker-directory-tabs { display: flex; flex-wrap: wrap; gap: .55rem; margin: 1rem 0; }
+    .worker-directory-tabs [aria-pressed="true"] { border-color: var(--primary); background: var(--primary); color: #fff; }
+    .worker-directory-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .8rem; }
+    .worker-directory-card { padding: 1rem; border: 1px solid var(--line); border-radius: 12px; background: #111a2a; }
+    .worker-directory-card h3 { margin: 0 0 .45rem; }
+    .worker-directory-card p, .worker-directory-card small { margin: .25rem 0; color: var(--muted); }
     .notification-button { position: relative; min-width: 42px; padding: .55rem .7rem; font-size: 1.15rem; }
     .notification-badge { position: absolute; top: -.35rem; right: -.35rem; display: grid; min-width: 1.2rem; height: 1.2rem; place-items: center; padding: 0 .25rem; border-radius: 999px; color: #fff; background: #d33b52; font-size: .68rem; font-weight: 750; }
     .notification-list, .activity-list { display: grid; gap: .6rem; max-height: 60vh; overflow-y: auto; }
@@ -713,6 +720,7 @@
         <div class="toolbar" id="inventoryLandingActions">
           <button class="button button-primary" id="inventoryRegisterSaleButton" type="button">Registrar venta</button>
           <button class="button button-secondary" id="inventoryAddProductButton" type="button">Agregar producto</button>
+          <button class="button button-secondary" id="workerDirectoryButton" type="button" hidden>Equipo de trabajo</button>
         </div>
         <form class="admin-form" id="inventorySaleForm" hidden>
           <h3 class="form-section-title">Registrar venta</h3>
@@ -774,6 +782,19 @@
           </div>
         </form>
         <section class="inventory-manage" id="inventoryManageList" hidden aria-live="polite"></section>
+        <section class="inventory-manage" id="workerDirectorySection" hidden aria-labelledby="workerDirectoryTitle">
+          <h2 id="workerDirectoryTitle">Equipo de trabajo</h2>
+          <p>Directorio privado para trabajadores aprobados. No se muestran correos ni contraseñas.</p>
+          <p class="status-message" id="workerDirectoryStatus" role="status" aria-live="polite"></p>
+          <nav class="worker-directory-tabs" aria-label="Secciones del equipo">
+            <button class="button button-secondary button-small" type="button" data-directory-view="team" aria-pressed="true">Trabajadores</button>
+            <button class="button button-secondary button-small" type="button" data-directory-view="departments" aria-pressed="false">Departamentos</button>
+            <button class="button button-secondary button-small" type="button" data-directory-view="positions" aria-pressed="false">Cargos</button>
+            <button class="button button-secondary button-small" type="button" data-directory-view="companies" aria-pressed="false">Empresas</button>
+            <button class="button button-secondary button-small" id="refreshWorkerDirectoryButton" type="button">Actualizar</button>
+          </nav>
+          <div class="worker-directory-grid" id="workerDirectoryContent" aria-live="polite"></div>
+        </section>
         <div class="toolbar">
           <button class="button button-secondary" id="inventoryBackButton" type="button">Volver al inicio</button>
         </div>
@@ -1228,6 +1249,23 @@
     </div>
   </dialog>
 
+  <dialog id="passwordResetDialog" aria-labelledby="passwordResetTitle">
+    <div class="dialog-content">
+      <div class="dialog-top">
+        <div>
+          <h2 id="passwordResetTitle">Crear contraseña nueva</h2>
+          <p class="dialog-subtitle">Usa al menos 12 caracteres. El enlace solo puede utilizarse una vez.</p>
+        </div>
+      </div>
+      <form id="passwordResetForm" class="generic-form">
+        <label class="wide">Nueva contraseña<input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+        <label class="wide">Confirmar contraseña<input name="confirmPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+        <p class="status-message wide" id="passwordResetStatus" role="status" aria-live="polite"></p>
+        <div class="wide"><button class="button button-primary" type="submit">Actualizar contraseña</button></div>
+      </form>
+    </div>
+  </dialog>
+
   <dialog id="notificationsDialog" aria-labelledby="notificationsTitle">
     <div class="dialog-content">
       <div class="dialog-top">
@@ -1284,6 +1322,9 @@
       workerRequestsStatus: document.querySelector("#workerRequestsStatus"),
       refreshWorkerRequestsButton: document.querySelector("#refreshWorkerRequestsButton"),
       workerRequestsDialog: document.querySelector("#workerRequestsDialog"),
+      passwordResetDialog: document.querySelector("#passwordResetDialog"),
+      passwordResetForm: document.querySelector("#passwordResetForm"),
+      passwordResetStatus: document.querySelector("#passwordResetStatus"),
       notificationButton: document.querySelector("#notificationButton"),
       notificationBadge: document.querySelector("#notificationBadge"),
       notificationsDialog: document.querySelector("#notificationsDialog"),
@@ -1329,6 +1370,11 @@
       inventoryLandingActions: document.querySelector("#inventoryLandingActions"),
       inventoryRegisterSaleButton: document.querySelector("#inventoryRegisterSaleButton"),
       inventoryAddProductButton: document.querySelector("#inventoryAddProductButton"),
+      workerDirectoryButton: document.querySelector("#workerDirectoryButton"),
+      workerDirectorySection: document.querySelector("#workerDirectorySection"),
+      workerDirectoryStatus: document.querySelector("#workerDirectoryStatus"),
+      workerDirectoryContent: document.querySelector("#workerDirectoryContent"),
+      refreshWorkerDirectoryButton: document.querySelector("#refreshWorkerDirectoryButton"),
       addInventoryCategoryButton: document.querySelector("#addInventoryCategoryButton"),
       removeInventoryCategoryButton: document.querySelector("#removeInventoryCategoryButton"),
       inventoryCategoryEditor: document.querySelector("#inventoryCategoryEditor"),
@@ -1411,6 +1457,9 @@
     let activeAdminModule = "people";
     let adminWorkersLoaded = false;
     let adminWorkersLoading = false;
+    let workerDirectoryData = null;
+    let workerDirectoryView = "team";
+    let passwordRecoveryToken = null;
     let editingCollectionItem = null;
     let portalData = loadPortalData();
     let activityLog = loadActivityLog();
@@ -1607,6 +1656,17 @@
         });
         await loadWorkerRequests();
         setStatus(elements.workerRequestsStatus, action === "approve" ? "Solicitud aceptada." : "Solicitud rechazada.", "success");
+        if (action === "approve" && activeAdminModule === "people") {
+          await loadAdminWorkers({
+            listId: "adminPeopleWorkersList",
+            statusId: "adminPeopleWorkersStatus"
+          });
+        } else if (action === "approve" && activeAdminModule === "workers") {
+          await loadAdminWorkers({
+            listId: "adminWorkersList",
+            statusId: "adminWorkersStatus"
+          });
+        }
       } catch (error) {
         setStatus(elements.workerRequestsStatus, error.message, "error");
         buttons.forEach(button => { button.disabled = false; });
@@ -1947,7 +2007,7 @@
       savePersonalNotification({
         id: `purchase-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         event_type: "purchase",
-        summary: `Compra simulada: ${product.name}`,
+        summary: `Has comprado ${product.name}`,
         details: {
           product_name: product.name,
           quantity,
@@ -1980,7 +2040,10 @@
       if (event.event_type === "purchase") {
         const quantity = Number(details.quantity);
         const amount = Number(details.total_cents);
-        return `Compró ${Number.isFinite(quantity) ? quantity : ""} ${details.unit || "unidades"} de ${details.product_name || event.summary} por ${formatUsd(amount)}. Compra simulada, sin cobro.`;
+        const quantityLabel = `${Number.isFinite(quantity) ? quantity : ""} ${details.unit || "unidades"}`;
+        const productName = details.product_name || event.summary;
+        const purchaseSummary = event.actor_name === "Tu compra" ? "Has comprado" : "Compraste";
+        return `${purchaseSummary} ${quantityLabel} de ${productName} por ${formatUsd(amount)}. Compra simulada, sin cobro.`;
       }
       if (event.event_type === "worker_warning") return `Motivo: ${details.message || "Sin detalle"}`;
       if (details.detail) return String(details.detail);
@@ -2181,10 +2244,13 @@
       const inventoryManagementOpen = hasInventoryAccess() && inventoryViewOpen && activeInventorySection === "home";
       document.querySelector("#inventoryPageTitle").textContent = hasInventoryAccess() ? "Inventario" : "Productos";
       elements.inventoryLandingActions.hidden = !inventoryManagementOpen;
+      elements.workerDirectoryButton.hidden = !isWorker || !inventoryManagementOpen;
       elements.inventorySaleForm.hidden = !hasInventoryAccess() || !inventoryViewOpen || activeInventorySection !== "sale";
       elements.inventoryForm.hidden = !hasInventoryAccess() || !inventoryViewOpen || activeInventorySection !== "product";
       elements.inventoryManageList.hidden = !inventoryViewOpen || (hasInventoryAccess() && activeInventorySection !== "home");
+      elements.workerDirectorySection.hidden = !isWorker || !inventoryViewOpen || activeInventorySection !== "directory";
       if (inventoryViewOpen) renderInventory();
+      if (isWorker && activeRoute === "inventory" && activeInventorySection === "directory") renderWorkerDirectory();
       elements.adminPanel.hidden = !isAdmin || !isAdminPanelOpen || activeRoute !== "home";
     }
 
@@ -2342,6 +2408,117 @@
       elements.inventorySaleQuantityInput.disabled = !product;
       if (product && Number(elements.inventorySaleQuantityInput.value) > availableStock(product)) {
         elements.inventorySaleQuantityInput.value = String(availableStock(product));
+      }
+    }
+
+    function renderWorkerDirectory() {
+      const content = elements.workerDirectoryContent;
+      content.replaceChildren();
+      document.querySelectorAll("[data-directory-view]").forEach(button => {
+        button.setAttribute("aria-pressed", String(button.dataset.directoryView === workerDirectoryView));
+      });
+      if (!workerDirectoryData) {
+        const loading = document.createElement("p");
+        loading.textContent = "Carga el directorio para consultar la información del equipo.";
+        content.append(loading);
+        return;
+      }
+      const { workers, departments, positions, companies } = workerDirectoryData;
+      if (workerDirectoryView === "team") {
+        if (!workers.length) {
+          const empty = document.createElement("p");
+          empty.textContent = "Todavía no hay trabajadores aprobados en el directorio.";
+          content.append(empty);
+          return;
+        }
+        workers.forEach(worker => {
+          const card = document.createElement("article");
+          card.className = "worker-directory-card";
+          const name = document.createElement("h3");
+          name.textContent = worker.name || "Nombre no indicado";
+          const detail = document.createElement("p");
+          detail.textContent = [worker.department, worker.position, worker.company].filter(Boolean).join(" · ") || "Datos laborales pendientes";
+          const startDate = new Date(worker.started_at);
+          const joined = document.createElement("small");
+          joined.textContent = `Fecha de ingreso: ${Number.isNaN(startDate.getTime())
+            ? "No disponible"
+            : new Intl.DateTimeFormat("es-PA", { dateStyle: "long", timeZone: "America/Panama" }).format(startDate)}`;
+          const tenure = document.createElement("small");
+          tenure.textContent = Number.isNaN(startDate.getTime()) ? "" : `Antigüedad: ${formatWorkerTenure(startDate)}`;
+          card.append(name, detail, joined, tenure);
+          content.append(card);
+        });
+        return;
+      }
+      const list = workerDirectoryView === "departments"
+        ? departments
+        : workerDirectoryView === "positions"
+          ? positions
+          : companies;
+      if (!list.length) {
+        const empty = document.createElement("p");
+        empty.textContent = "Aún no hay datos asignados para mostrar.";
+        content.append(empty);
+        return;
+      }
+      list.forEach(value => {
+        const count = workers.filter(worker => worker[
+          workerDirectoryView === "departments" ? "department" : workerDirectoryView === "positions" ? "position" : "company"
+        ] === value).length;
+        const card = document.createElement("article");
+        card.className = "worker-directory-card";
+        const title = document.createElement("h3");
+        title.textContent = value;
+        const members = document.createElement("p");
+        members.textContent = `${count} ${count === 1 ? "trabajador" : "trabajadores"}`;
+        card.append(title, members);
+        content.append(card);
+      });
+    }
+
+    function formatWorkerTenure(startDate) {
+      const getPanamaDateParts = date => new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Panama",
+        year: "numeric",
+        month: "numeric",
+        day: "numeric"
+      }).formatToParts(date).reduce((parts, item) => {
+        if (item.type !== "literal") parts[item.type] = Number(item.value);
+        return parts;
+      }, {});
+      const todayParts = getPanamaDateParts(new Date());
+      const start = getPanamaDateParts(startDate);
+      let years = todayParts.year - start.year;
+      let months = todayParts.month - start.month;
+      let days = todayParts.day - start.day;
+      if (days < 0) {
+        days += new Date(Date.UTC(todayParts.year, todayParts.month - 1, 0)).getUTCDate();
+        months -= 1;
+      }
+      if (months < 0) {
+        months += 12;
+        years -= 1;
+      }
+      if (years < 0) return "Menos de un día";
+      return `${years} ${years === 1 ? "año" : "años"}, ${months} ${months === 1 ? "mes" : "meses"} y ${days} ${days === 1 ? "día" : "días"}`;
+    }
+
+    async function loadWorkerDirectory() {
+      if (!isWorker || !workerAccessToken) return;
+      elements.refreshWorkerDirectoryButton.disabled = true;
+      setStatus(elements.workerDirectoryStatus, "Cargando directorio…", "");
+      try {
+        workerDirectoryData = await apiRequest("/api/worker-requests?view=directory", { token: workerAccessToken });
+        workerDirectoryData.workers = Array.isArray(workerDirectoryData.workers) ? workerDirectoryData.workers : [];
+        workerDirectoryData.departments = Array.isArray(workerDirectoryData.departments) ? workerDirectoryData.departments : [];
+        workerDirectoryData.positions = Array.isArray(workerDirectoryData.positions) ? workerDirectoryData.positions : [];
+        workerDirectoryData.companies = Array.isArray(workerDirectoryData.companies) ? workerDirectoryData.companies : [];
+        setStatus(elements.workerDirectoryStatus, "", "");
+        renderWorkerDirectory();
+      } catch (error) {
+        setStatus(elements.workerDirectoryStatus, error.message, "error");
+      } finally {
+        elements.refreshWorkerDirectoryButton.disabled = false;
       }
     }
 
@@ -2819,6 +2996,18 @@
         elements.adminModuleContent.append(heading, note);
         elements.adminModuleContent.append(elements.adminPanel);
         elements.adminPanel.hidden = false;
+        const workersSection = document.createElement("section");
+        workersSection.className = "approved-workers-section";
+        workersSection.innerHTML = `<h2>Trabajadores aprobados</h2>
+          <p>Al aprobar una solicitud, el nombre, correo y estado de la cuenta del trabajador aparecen aquí. Las contraseñas son privadas y nunca se muestran.</p>
+          <button class="button button-secondary button-small" type="button" data-refresh-workers data-workers-list="adminPeopleWorkersList" data-workers-status="adminPeopleWorkersStatus">Actualizar trabajadores</button>
+          <p class="status-message" id="adminPeopleWorkersStatus" role="status" aria-live="polite"></p>
+          <div class="worker-requests-list" id="adminPeopleWorkersList" aria-live="polite"><p>Cargando trabajadores…</p></div>`;
+        elements.adminModuleContent.append(workersSection);
+        loadAdminWorkers({
+          listId: "adminPeopleWorkersList",
+          statusId: "adminPeopleWorkersStatus"
+        });
         return;
       }
       if (activeAdminModule === "workers") {
@@ -2844,14 +3033,17 @@
     function renderAdminWorkers() {
       elements.adminModuleContent.innerHTML = `<h2>Trabajadores aprobados</h2>
         <p>Consulta sus cuentas, registra advertencias o retira el acceso de un trabajador.</p>
-        <button class="button button-secondary button-small" type="button" data-refresh-workers>Actualizar lista</button>
+        <button class="button button-secondary button-small" type="button" data-refresh-workers data-workers-list="adminWorkersList" data-workers-status="adminWorkersStatus">Actualizar lista</button>
         <p class="status-message" id="adminWorkersStatus" role="status" aria-live="polite"></p>
-        <div class="worker-requests-list" id="adminWorkersList" aria-live="polite"><p>Cargando trabajadores…</p></div>`;
-      if (!adminWorkersLoaded && !adminWorkersLoading) loadAdminWorkers();
+        <div class="worker-requests-list approved-workers-section" id="adminWorkersList" aria-live="polite"><p>Cargando trabajadores…</p></div>`;
+      loadAdminWorkers({
+        listId: "adminWorkersList",
+        statusId: "adminWorkersStatus"
+      });
     }
 
-    function renderApprovedWorkers(workers) {
-      const list = elements.adminModuleContent.querySelector("#adminWorkersList");
+    function renderApprovedWorkers(workers, listId) {
+      const list = elements.adminModuleContent.querySelector(`#${listId}`);
       if (!list) return;
       list.replaceChildren();
       if (!workers.length) {
@@ -2872,10 +3064,15 @@
         email.textContent = worker.email;
         const account = document.createElement("small");
         account.textContent = worker.accountCreated ? "Cuenta creada" : "Cuenta pendiente de creación";
+        const joined = document.createElement("small");
+        const reviewedAt = worker.reviewed_at ? new Date(worker.reviewed_at) : null;
+        joined.textContent = `Aprobado: ${reviewedAt && !Number.isNaN(reviewedAt.getTime())
+          ? new Intl.DateTimeFormat("es-PA", { dateStyle: "medium", timeZone: "America/Panama" }).format(reviewedAt)
+          : "fecha no disponible"}`;
         const warningCount = document.createElement("small");
         const warnings = Array.isArray(worker.warnings) ? worker.warnings : [];
         warningCount.textContent = `Advertencias: ${warnings.length}`;
-        details.append(name, email, account, warningCount);
+        details.append(name, email, account, joined, warningCount);
         if (warnings.length) {
           const latestWarning = document.createElement("small");
           latestWarning.textContent = `Última advertencia: ${warnings[0].message}`;
@@ -2888,6 +3085,7 @@
         reason.type = "text";
         reason.maxLength = 500;
         reason.placeholder = "Motivo de advertencia";
+        reason.className = "worker-warning-reason";
         reason.setAttribute("aria-label", `Motivo de advertencia para ${worker.name || worker.email}`);
         const warn = document.createElement("button");
         warn.type = "button";
@@ -2901,26 +3099,71 @@
         dismiss.textContent = "Despedir";
         dismiss.dataset.workerAction = "dismiss";
         dismiss.dataset.workerEmail = worker.email;
-        actions.append(reason, warn, dismiss);
+        const resetPassword = document.createElement("button");
+        resetPassword.type = "button";
+        resetPassword.className = "button button-secondary button-small";
+        resetPassword.textContent = "Enviar enlace para cambiar contraseña";
+        resetPassword.disabled = !worker.accountCreated;
+        resetPassword.dataset.workerAction = "reset_password";
+        resetPassword.dataset.workerEmail = worker.email;
+        const department = createWorkerAssignmentSelect(
+          "Departamento",
+          portalData.departments.map(item => item.name),
+          worker.department
+        );
+        department.dataset.workerField = "department";
+        const position = createWorkerAssignmentSelect(
+          "Cargo",
+          portalData.jobs.map(item => item.name),
+          worker.position
+        );
+        position.dataset.workerField = "position";
+        const company = createWorkerAssignmentSelect(
+          "Empresa",
+          [portalData.settings.name].filter(Boolean),
+          worker.company || portalData.settings.name
+        );
+        company.dataset.workerField = "company";
+        const saveProfile = document.createElement("button");
+        saveProfile.type = "button";
+        saveProfile.className = "button button-secondary button-small";
+        saveProfile.textContent = "Guardar datos laborales";
+        saveProfile.dataset.workerProfileSave = "true";
+        saveProfile.dataset.workerEmail = worker.email;
+        actions.append(reason, warn, dismiss, resetPassword, department, position, company, saveProfile);
         row.append(details, actions);
         list.append(row);
       }
     }
 
-    async function loadAdminWorkers() {
-      if (!isAdmin || adminWorkersLoading) return;
+    function createWorkerAssignmentSelect(label, choices, currentValue) {
+      const select = document.createElement("select");
+      select.setAttribute("aria-label", label);
+      select.add(new Option(`Selecciona ${label.toLocaleLowerCase("es")}`, ""));
+      const values = [...new Set(choices.filter(Boolean))];
+      if (currentValue && !values.includes(currentValue)) values.push(currentValue);
+      values.sort((left, right) => left.localeCompare(right, "es"));
+      values.forEach(value => select.add(new Option(value, value)));
+      select.value = currentValue || "";
+      return select;
+    }
+
+    async function loadAdminWorkers({ listId = "adminWorkersList", statusId = "adminWorkersStatus" } = {}) {
+      if (!isAdmin || adminWorkersLoading) return false;
       adminWorkersLoading = true;
-      const status = elements.adminModuleContent.querySelector("#adminWorkersStatus");
+      const status = elements.adminModuleContent.querySelector(`#${statusId}`);
       if (status) setStatus(status, "Cargando trabajadores…", "");
       try {
         const result = await apiRequest("/api/worker-requests?view=workers", { admin: true });
-        renderApprovedWorkers(Array.isArray(result.workers) ? result.workers : []);
+        renderApprovedWorkers(Array.isArray(result.workers) ? result.workers : [], listId);
         adminWorkersLoaded = true;
-        const currentStatus = elements.adminModuleContent.querySelector("#adminWorkersStatus");
+        const currentStatus = elements.adminModuleContent.querySelector(`#${statusId}`);
         if (currentStatus) setStatus(currentStatus, "", "");
+        return true;
       } catch (error) {
-        const currentStatus = elements.adminModuleContent.querySelector("#adminWorkersStatus");
+        const currentStatus = elements.adminModuleContent.querySelector(`#${statusId}`);
         if (currentStatus) setStatus(currentStatus, error.message, "error");
+        return false;
       } finally {
         adminWorkersLoading = false;
       }
@@ -2931,23 +3174,66 @@
       const action = button.dataset.workerAction;
       const email = button.dataset.workerEmail;
       if (action === "dismiss" && !window.confirm(`¿Seguro que deseas despedir a ${email}? Se revocará su acceso.`)) return;
+      if (action === "reset_password" && !window.confirm(`¿Enviar un enlace para restablecer la contraseña a ${email}?`)) return;
       const row = button.closest(".approved-worker-row");
+      const workersSection = button.closest(".approved-workers-section");
       const message = action === "warn"
-        ? row.querySelector("input").value.trim() || "Advertencia administrativa."
+        ? row.querySelector(".worker-warning-reason").value.trim() || "Advertencia administrativa."
         : "";
-      const status = elements.adminModuleContent.querySelector("#adminWorkersStatus");
+      const buttons = [...row.querySelectorAll("button")];
+      buttons.forEach(item => { item.disabled = true; });
+      try {
+        const result = await apiRequest("/api/worker-requests", {
+          method: "PATCH",
+          admin: true,
+          body: { email, action, message }
+        });
+        adminWorkersLoaded = false;
+        const status = document.getElementById(workersSection.id.replace(/List$/, "Status"));
+        const refreshed = await loadAdminWorkers({
+          listId: workersSection.id || "adminWorkersList",
+          statusId: status && status.id || "adminWorkersStatus"
+        });
+        const currentStatus = document.getElementById(workersSection.id.replace(/List$/, "Status"));
+        if (currentStatus && refreshed) {
+          setStatus(currentStatus, action === "warn"
+            ? "Advertencia registrada."
+            : action === "dismiss"
+              ? "Acceso del trabajador revocado."
+              : result.message || "Acción completada.", "success");
+        }
+      } catch (error) {
+        const status = workersSection && document.getElementById(workersSection.id.replace(/List$/, "Status"));
+        if (status) setStatus(status, error.message, "error");
+        buttons.forEach(item => { item.disabled = false; });
+      }
+    }
+
+    async function updateApprovedWorkerProfile(button) {
+      if (!isAdmin) return;
+      const row = button.closest(".approved-worker-row");
+      const workersList = button.closest(".approved-workers-section");
+      const status = workersList && document.getElementById(workersList.id.replace(/List$/, "Status"));
       const buttons = [...row.querySelectorAll("button")];
       buttons.forEach(item => { item.disabled = true; });
       try {
         await apiRequest("/api/worker-requests", {
           method: "PATCH",
           admin: true,
-          body: { email, action, message }
+          body: {
+            action: "update_profile",
+            email: button.dataset.workerEmail,
+            department: row.querySelector('[data-worker-field="department"]').value,
+            position: row.querySelector('[data-worker-field="position"]').value,
+            company: row.querySelector('[data-worker-field="company"]').value
+          }
         });
         adminWorkersLoaded = false;
-        await loadAdminWorkers();
-        const currentStatus = elements.adminModuleContent.querySelector("#adminWorkersStatus");
-        if (currentStatus) setStatus(currentStatus, action === "warn" ? "Advertencia registrada." : "Acceso del trabajador revocado.", "success");
+        const refreshed = await loadAdminWorkers({
+          listId: workersList.id,
+          statusId: status && status.id || "adminWorkersStatus"
+        });
+        if (status && refreshed) setStatus(status, "Datos laborales actualizados.", "success");
       } catch (error) {
         if (status) setStatus(status, error.message, "error");
         buttons.forEach(item => { item.disabled = false; });
@@ -3229,6 +3515,23 @@
       elements.inventoryForm.elements.name.focus();
     });
 
+    elements.workerDirectoryButton.addEventListener("click", () => {
+      if (!isWorker || activeRoute !== "inventory") return;
+      activeInventorySection = "directory";
+      workerDirectoryView = "team";
+      render();
+      loadWorkerDirectory();
+    });
+
+    elements.refreshWorkerDirectoryButton.addEventListener("click", loadWorkerDirectory);
+    document.querySelectorAll("[data-directory-view]").forEach(button => {
+      button.addEventListener("click", () => {
+        if (!isWorker) return;
+        workerDirectoryView = button.dataset.directoryView;
+        renderWorkerDirectory();
+      });
+    });
+
     elements.addInventoryCategoryButton.addEventListener("click", () => {
       if (!hasInventoryAccess() || activeRoute !== "inventory") return;
       elements.inventoryCategoryEditor.hidden = false;
@@ -3331,11 +3634,16 @@
     elements.adminModuleContent.addEventListener("click", event => {
       const button = event.target.closest("button");
       if (!button) return;
-      if (button.dataset.workerAction) {
+      if (button.dataset.workerProfileSave !== undefined) {
+        updateApprovedWorkerProfile(button);
+      } else if (button.dataset.workerAction) {
         updateApprovedWorker(button);
       } else if (button.dataset.refreshWorkers !== undefined) {
         adminWorkersLoaded = false;
-        loadAdminWorkers();
+        loadAdminWorkers({
+          listId: button.dataset.workersList,
+          statusId: button.dataset.workersStatus
+        });
       } else if (button.dataset.refreshActivity !== undefined) {
         loadAdminActivity();
       } else if (button.dataset.adminModule) {
@@ -3424,6 +3732,43 @@
       } else if (button.hasAttribute("data-recovery-demo")) {
         const status = document.querySelector("#securityStatus");
         setStatus(status, "En producción, la recuperación enviaría un enlace seguro. No se envió ningún correo en esta demo.", "success");
+      }
+    });
+
+    elements.passwordResetForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      const password = elements.passwordResetForm.elements.password.value;
+      const confirmation = elements.passwordResetForm.elements.confirmPassword.value;
+      if (!passwordRecoveryToken) {
+        setStatus(elements.passwordResetStatus, "El enlace de recuperación no es válido. Solicita uno nuevo al administrador.", "error");
+        return;
+      }
+      if (password !== confirmation) {
+        setStatus(elements.passwordResetStatus, "Las contraseñas no coinciden.", "error");
+        elements.passwordResetForm.elements.confirmPassword.focus();
+        return;
+      }
+      const submit = elements.passwordResetForm.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      setStatus(elements.passwordResetStatus, "Actualizando contraseña…", "");
+      try {
+        const result = await apiRequest("/api/auth", {
+          method: "POST",
+          body: { action: "update_password", recoveryToken: passwordRecoveryToken, password }
+        });
+        passwordRecoveryToken = null;
+        history.replaceState(null, "", location.pathname + location.search);
+        elements.passwordResetForm.reset();
+        setStatus(elements.passwordResetStatus, result.message || "Contraseña actualizada.", "success");
+        entryMode = "worker";
+        activeRoute = "welcome";
+        render();
+        setStatus(elements.workerLoginStatus, "Contraseña actualizada. Inicia sesión con tu nueva contraseña.", "success");
+        window.setTimeout(() => closeDialog(elements.passwordResetDialog), 1800);
+      } catch (error) {
+        setStatus(elements.passwordResetStatus, error.message, "error");
+      } finally {
+        submit.disabled = false;
       }
     });
 
@@ -4640,6 +4985,14 @@
 
     updateConnectionRelationshipField();
     populateCountryOptions();
+    const recoveryParams = new URLSearchParams(location.hash.replace(/^#/, ""));
+    if (recoveryParams.get("type") === "recovery") {
+      passwordRecoveryToken = recoveryParams.get("access_token");
+      openDialog(elements.passwordResetDialog);
+      if (!passwordRecoveryToken) {
+        setStatus(elements.passwordResetStatus, "El enlace de recuperación no es válido. Solicita uno nuevo al administrador.", "error");
+      }
+    }
     render();
     refreshNotifications().catch(error => console.error("No se pudieron cargar las notificaciones.", error));
     window.setInterval(() => {
