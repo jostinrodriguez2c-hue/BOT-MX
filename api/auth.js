@@ -7,7 +7,10 @@ const {
   requireInventoryAccess,
   rpc,
   sendJson,
+  SUPER_ADMIN_OWNER_EMAIL,
+  SUPER_ADMIN_ROLE_NAME,
   supabase,
+  WORKER_PERMISSIONS,
   writeActivity
 } = require("../lib/api");
 
@@ -26,7 +29,7 @@ async function login(email, password, res) {
   }
 
   const userEmail = typeof session.user.email === "string" ? session.user.email.toLowerCase() : "";
-  if (userEmail === getEnv("ADMIN_EMAIL").trim().toLowerCase()) {
+  if (userEmail === getEnv("ADMIN_EMAIL").trim().toLowerCase() || userEmail === SUPER_ADMIN_OWNER_EMAIL) {
     const admins = await supabase(
       `/rest/v1/admin_users?user_id=eq.${encodeURIComponent(session.user.id)}&select=user_id&limit=1`
     );
@@ -37,7 +40,12 @@ async function login(email, password, res) {
     return sendJson(res, 200, {
       access_token: session.access_token,
       expires_in: session.expires_in,
-      user: { email: userEmail, role: "admin" }
+      user: {
+        email: userEmail,
+        role: "admin",
+        permissions: WORKER_PERMISSIONS,
+        isSuperAdminManager: userEmail === SUPER_ADMIN_OWNER_EMAIL
+      }
     });
   }
 
@@ -68,22 +76,28 @@ async function login(email, password, res) {
     });
   }
   const [role] = application.role_id ? await supabase(
-    `/rest/v1/worker_roles?id=eq.${encodeURIComponent(application.role_id)}&select=permissions&limit=1`
+    `/rest/v1/worker_roles?id=eq.${encodeURIComponent(application.role_id)}&select=name,permissions&limit=1`
   ) : [];
   const permissions = Array.isArray(role && role.permissions) ? role.permissions : [];
+  const isSupremeAdmin = Boolean(role && role.name === SUPER_ADMIN_ROLE_NAME);
   await writeActivity(session.user, "worker_login", "Inicio de sesión de trabajador");
   return sendJson(res, 200, {
     access_token: session.access_token,
     expires_in: session.expires_in,
-    user: { email: userEmail, role: "worker", permissions }
+    user: {
+      email: userEmail,
+      role: isSupremeAdmin ? "admin" : "worker",
+      permissions: isSupremeAdmin ? WORKER_PERMISSIONS : permissions,
+      isSuperAdminManager: false
+    }
   });
 }
 
 async function activateWorker(email, code, password, res) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254
-    || typeof code !== "string" || !/^[a-f0-9]{16}$/i.test(code)
-    || typeof password !== "string" || password.length < 12 || password.length > 128) {
-    return sendJson(res, 400, { error: "Escribe un correo válido, el código temporal de 16 caracteres y una contraseña de al menos 12 caracteres." });
+    || typeof code !== "string" || !/^\d{4}$/.test(code)
+    || typeof password !== "string" || password.length < 5 || password.length > 128) {
+    return sendJson(res, 400, { error: "Escribe un correo válido, el código temporal de 4 dígitos y una contraseña de al menos 5 caracteres." });
   }
   const [application] = await supabase(
     `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.approved&select=email,name&limit=1`
@@ -188,8 +202,8 @@ async function activateWorker(email, code, password, res) {
 
 async function updateWorkerPassword(recoveryToken, password, res) {
   if (typeof recoveryToken !== "string" || recoveryToken.length < 20 || recoveryToken.length > 4096
-    || typeof password !== "string" || password.length < 12 || password.length > 128) {
-    return sendJson(res, 400, { error: "El enlace no es válido o la contraseña tiene menos de 12 caracteres." });
+    || typeof password !== "string" || password.length < 5 || password.length > 128) {
+    return sendJson(res, 400, { error: "El enlace no es válido o la contraseña tiene menos de 5 caracteres." });
   }
   const base = getEnv("SUPABASE_URL").replace(/\/+$/, "");
   const headers = {
@@ -231,7 +245,8 @@ module.exports = async function handler(req, res) {
         user: {
           email: user.email,
           role: user.role,
-          permissions: user.permissions || []
+          permissions: user.permissions || [],
+          isSuperAdminManager: Boolean(user.isSuperAdminManager)
         }
       });
     } catch (error) {

@@ -697,9 +697,9 @@
               <summary>¿Tienes un código? Activar acceso</summary>
               <form id="workerActivationForm" class="generic-form worker-activation-form">
                 <label>Correo aprobado<input name="email" type="email" autocomplete="email" required></label>
-                <label>Código temporal<input name="code" type="text" minlength="16" maxlength="16" pattern="[a-fA-F0-9]{16}" autocomplete="one-time-code" required></label>
-                <label>Crea tu contraseña<input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
-                <small>El código lo entrega personalmente el administrador que aprobó tu solicitud. Vence en 24 horas y solo se puede usar una vez. Tu contraseña debe tener al menos 12 caracteres.</small>
+                <label>Código temporal<input name="code" type="text" inputmode="numeric" minlength="4" maxlength="4" pattern="[0-9]{4}" autocomplete="one-time-code" required></label>
+                <label>Crea tu contraseña<input name="password" type="password" minlength="5" maxlength="128" autocomplete="new-password" required></label>
+                <small>El código lo entrega personalmente el administrador. Vence en 24 horas y solo se puede usar una vez. Tu contraseña debe tener al menos 5 caracteres.</small>
                 <p class="status-message" id="workerActivationStatus" role="status"></p>
                 <button class="button button-primary" type="submit">Activar acceso</button>
               </form>
@@ -1324,12 +1324,12 @@
       <div class="dialog-top">
         <div>
           <h2 id="passwordResetTitle">Crear contraseña nueva</h2>
-          <p class="dialog-subtitle">Usa al menos 12 caracteres. El enlace solo puede utilizarse una vez.</p>
+          <p class="dialog-subtitle">Usa al menos 5 caracteres. El enlace solo puede utilizarse una vez.</p>
         </div>
       </div>
       <form id="passwordResetForm" class="generic-form">
-        <label class="wide">Nueva contraseña<input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
-        <label class="wide">Confirmar contraseña<input name="confirmPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+        <label class="wide">Nueva contraseña<input name="password" type="password" minlength="5" maxlength="128" autocomplete="new-password" required></label>
+        <label class="wide">Confirmar contraseña<input name="confirmPassword" type="password" minlength="5" maxlength="128" autocomplete="new-password" required></label>
         <p class="status-message wide" id="passwordResetStatus" role="status" aria-live="polite"></p>
         <div class="wide"><button class="button button-primary" type="submit">Actualizar contraseña</button></div>
       </form>
@@ -1527,6 +1527,7 @@
     let showComparisonRequirements = false;
     let validationToastTimer = null;
     let isAdmin = false;
+    let canManageSupremeRole = false;
     let isWorker = false;
     let workerPermissions = [];
     let adminAccessToken = null;
@@ -1780,15 +1781,13 @@
           admin: true
         });
         await loadWorkerRequests();
-        if (result.activationCode) {
-          setStatus(
-            elements.workerRequestsStatus,
-            `Código temporal para entregar personalmente (vence en 24 horas, un uso): ${result.activationCode}`,
-            "success"
-          );
-        } else {
-          setStatus(elements.workerRequestsStatus, action === "approve" ? "Solicitud aceptada." : "Solicitud rechazada.", "success");
-        }
+        setStatus(
+          elements.workerRequestsStatus,
+          action === "approve"
+            ? "Solicitud aprobada. El código temporal está disponible en Personas hasta que venza o la cuenta se active."
+            : "Solicitud rechazada.",
+          "success"
+        );
         if (action === "approve" && activeAdminModule === "people") {
           await loadAdminWorkers({
             statusId: "adminPeopleAssignmentsStatus",
@@ -2402,6 +2401,7 @@
       }
       authSessionExpiresAt = null;
       isAdmin = false;
+      canManageSupremeRole = false;
       isWorker = false;
       adminAccessToken = null;
       workerAccessToken = null;
@@ -2481,6 +2481,7 @@
           });
           if (result.user && result.user.role === "admin") {
             isAdmin = true;
+            canManageSupremeRole = Boolean(result.user.isSuperAdminManager);
             adminAccessToken = savedAuth.accessToken;
             notificationIdentity = String(result.user.email || "").toLowerCase();
           } else if (result.user && result.user.role === "worker") {
@@ -2599,7 +2600,7 @@
       }
 
       elements.manageAllButton.hidden = !isAdmin;
-      elements.workerRequestsButton.hidden = !isAdmin && !canReviewApplications();
+      elements.workerRequestsButton.hidden = !isAdmin;
       elements.ownerQuickNav.hidden = !isAdmin;
       elements.adminRouteButton.hidden = true;
       elements.adminView.hidden = !isAdmin || activeRoute !== "admin";
@@ -3507,6 +3508,7 @@
         const result = await apiRequest("/api/worker-requests?view=admin_data", { admin: true });
         organizationCatalogs = Array.isArray(result.catalogs) ? result.catalogs : [];
         workerRoles = Array.isArray(result.roles) ? result.roles : [];
+        canManageSupremeRole = Boolean(result.canManageSupremeRole);
         adminDataLoaded = true;
         if (activeAdminModule === "catalogs") {
           renderAdminCatalogs(activeOrganizationCatalogKind);
@@ -3528,7 +3530,7 @@
       if (kind === "roles") {
         const current = workerRoles.find(role => role.id === editingRoleId) || null;
         elements.adminModuleContent.innerHTML = `<h2>Roles y permisos</h2>
-          <p>Asigna permisos a trabajadores aprobados. El rol no puede otorgar acceso de administrador supremo.</p>
+          <p>Asigna permisos a trabajadores aprobados. El rol Administrador supremo está reservado a ${escapeHtml("jostin.rodriguez2c@gmail.com")} y solo esa cuenta puede asignarlo.</p>
           <form class="generic-form" data-role-form>
             <label>Nombre del rol<input name="name" maxlength="80" required value="${escapeHtml(current ? current.name : "")}"></label>
             <fieldset class="role-permission-list"><legend>Permisos del rol</legend>
@@ -3540,8 +3542,8 @@
           ${renderGenericTable(["Rol","Permisos","Acciones"], workerRoles.map(role => [
             role.name,
             (role.permissions || []).map(permission => workerPermissionOptions.find(item => item[0] === permission)?.[1] || permission).join(", ") || "Sin permisos",
-            role.name === "Trabajador"
-              ? "Rol predeterminado protegido"
+            role.name === "Trabajador" || role.name === "Administrador supremo"
+              ? "Rol protegido"
               : `<button class="button button-secondary button-small" type="button" data-edit-role="${escapeHtml(role.id)}">Editar</button> <button class="button button-danger button-small" type="button" data-delete-role="${escapeHtml(role.id)}">Eliminar</button>`
           ]))}`;
         if (!adminDataLoaded) loadAdminCatalogData();
@@ -3601,16 +3603,42 @@
           const roleSelect = document.createElement("select");
           roleSelect.setAttribute("aria-label", "Rol");
           roleSelect.add(new Option("Selecciona rol", ""));
-          workerRoles.forEach(role => roleSelect.add(new Option(role.name, role.id)));
+          workerRoles
+            .filter(role => canManageSupremeRole || role.name !== "Administrador supremo")
+            .forEach(role => roleSelect.add(new Option(role.name, role.id)));
           roleSelect.dataset.workerField = "role";
           roleSelect.value = worker.role_id || "";
+          if (worker.roleName === "Administrador supremo" && !canManageSupremeRole) {
+            roleSelect.add(new Option("Administrador supremo (protegido)", worker.role_id));
+            roleSelect.value = worker.role_id;
+            roleSelect.disabled = true;
+          }
           assignmentActions.append(createWorkerAssignmentField("Rol", roleSelect));
+          if (worker.activationCode) {
+            const activationCode = document.createElement("small");
+            const expiry = new Date(worker.activation_code_expires_at);
+            activationCode.textContent = `Código temporal: ${worker.activationCode} · vence ${new Intl.DateTimeFormat("es-PA", {
+              dateStyle: "short",
+              timeStyle: "short",
+              timeZone: "America/Panama"
+            }).format(expiry)}`;
+            assignmentActions.append(activationCode);
+          } else if (!worker.accountCreated) {
+            const issueCode = document.createElement("button");
+            issueCode.type = "button";
+            issueCode.className = "button button-secondary button-small";
+            issueCode.textContent = "Generar código temporal de 4 dígitos";
+            issueCode.dataset.workerAction = "issue_activation_code";
+            issueCode.dataset.workerEmail = worker.email;
+            assignmentActions.append(issueCode);
+          }
           const saveProfile = document.createElement("button");
           saveProfile.type = "button";
           saveProfile.className = "button button-secondary button-small";
           saveProfile.textContent = "Guardar datos laborales";
           saveProfile.dataset.workerProfileSave = "true";
           saveProfile.dataset.workerEmail = worker.email;
+          saveProfile.disabled = worker.roleName === "Administrador supremo" && !canManageSupremeRole;
           assignmentActions.append(saveProfile);
           row.append(details, assignmentActions);
           list.append(row);
@@ -3700,6 +3728,7 @@
       try {
         const result = await apiRequest("/api/worker-requests?view=workers", { admin: true });
         const workers = Array.isArray(result.workers) ? result.workers : [];
+        canManageSupremeRole = Boolean(result.canManageSupremeRole);
         renderApprovedWorkers(workers, listId);
         if (assignmentListId) renderApprovedWorkers(workers, assignmentListId, true);
         adminWorkersLoaded = true;
@@ -3749,9 +3778,11 @@
         });
         adminWorkersLoaded = false;
         const status = document.getElementById(workersSection.id.replace(/List$/, "Status"));
+        const isAssignmentList = workersSection.id === "adminPeopleAssignmentsList";
         const refreshed = await loadAdminWorkers({
-          listId: workersSection.id || "adminWorkersList",
-          statusId: status && status.id || "adminWorkersStatus"
+          listId: isAssignmentList ? "adminWorkersList" : workersSection.id || "adminWorkersList",
+          statusId: status && status.id || "adminWorkersStatus",
+          assignmentListId: isAssignmentList ? workersSection.id : ""
         });
         const currentStatus = document.getElementById(workersSection.id.replace(/List$/, "Status"));
         if (currentStatus && refreshed) {
@@ -4983,6 +5014,7 @@
         if (adminLogin) {
           adminAccessToken = session.access_token;
           isAdmin = true;
+          canManageSupremeRole = Boolean(session.user.isSuperAdminManager);
           isAdminPanelOpen = true;
           activeAdminModule = "people";
           activeRoute = "home";

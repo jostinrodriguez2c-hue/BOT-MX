@@ -1,11 +1,14 @@
 const crypto = require("node:crypto");
 const {
   body,
+  decryptWorkerActivationCode,
+  encryptWorkerActivationCode,
   getEnv,
   publicError,
   requireAdmin,
-  requireInventoryAccess,
   requireWorkerPermission,
+  SUPER_ADMIN_OWNER_EMAIL,
+  SUPER_ADMIN_ROLE_NAME,
   sendJson,
   supabase,
   writeActivity
@@ -30,7 +33,7 @@ function normalizeEmail(value) {
 }
 
 async function issueWorkerActivationCode(email) {
-  const code = crypto.randomBytes(8).toString("hex");
+  const code = String(crypto.randomInt(0, 10000)).padStart(4, "0");
   const codeHash = crypto.createHmac("sha256", getEnv("SUPABASE_SERVICE_ROLE_KEY"))
     .update(code)
     .digest("hex");
@@ -41,6 +44,7 @@ async function issueWorkerActivationCode(email) {
       headers: { Prefer: "return=representation" },
       body: JSON.stringify({
         activation_code_hash: codeHash,
+        activation_code_ciphertext: encryptWorkerActivationCode(code),
         activation_code_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         activation_code_attempts: 0
       })
@@ -99,28 +103,23 @@ module.exports = async function handler(req, res) {
         });
       }
       if (req.query && req.query.view === "admin_data") {
-        await requireAdmin(req);
+        const admin = await requireAdmin(req);
         const [catalogs, roles] = await Promise.all([
           supabase("/rest/v1/organization_catalogs?select=id,kind,name,description&order=kind.asc,name.asc"),
           supabase("/rest/v1/worker_roles?select=id,name,permissions&order=name.asc")
         ]);
-        return sendJson(res, 200, { catalogs, roles });
+        return sendJson(res, 200, {
+          catalogs,
+          roles,
+          canManageSupremeRole: Boolean(admin.isSuperAdminManager)
+        });
       }
       if (req.query && req.query.view === "requests") {
-        await requireWorkerPermission(req, "applications_review");
-        const [requests, accounts] = await Promise.all([
-          supabase(
-          "/rest/v1/worker_applications?select=email,name,status,created_at,reviewed_at&order=created_at.desc"
-          ),
-          supabase("/rest/v1/worker_users?select=email")
-        ]);
-        const accountEmails = new Set(accounts.map(account => account.email));
-        return sendJson(res, 200, {
-          requests: requests.map(request => ({
-            ...request,
-            accountCreated: accountEmails.has(request.email)
-          }))
-        });
+        await requireAdmin(req);
+        const requests = await supabase(
+          "/rest/v1/worker_applications?select=email,name,status,created_at,reviewed_at&status=eq.pending&order=created_at.desc"
+        );
+        return sendJson(res, 200, { requests });
       }
       if (req.query && req.query.view === "catalogs") {
         await requireWorkerPermission(req, "catalog_manage");
@@ -129,28 +128,49 @@ module.exports = async function handler(req, res) {
         );
         return sendJson(res, 200, { catalogs });
       }
-      await requireAdmin(req);
+      const admin = await requireAdmin(req);
       if (req.query && req.query.view === "workers") {
         const [applications, accounts, warnings, roles] = await Promise.all([
-          supabase("/rest/v1/worker_applications?select=email,name,status,created_at,reviewed_at,department,position,company,role_id&status=eq.approved&order=created_at.desc"),
+          supabase("/rest/v1/worker_applications?select=email,name,status,created_at,reviewed_at,department,position,company,role_id,activation_code_ciphertext,activation_code_expires_at,activation_code_attempts&status=eq.approved&order=created_at.desc"),
           supabase("/rest/v1/worker_users?select=email,user_id,name"),
           supabase("/rest/v1/worker_warnings?select=email,message,created_at&order=created_at.desc"),
           supabase("/rest/v1/worker_roles?select=id,name,permissions&order=name.asc")
         ]);
-        const workers = applications.map(application => ({
-          ...application,
-          accountCreated: accounts.some(account => account.email === application.email),
-          warnings: warnings.filter(warning => warning.email === application.email)
-        }));
+        const accountEmails = new Set(accounts.map(account => account.email));
+        const workers = applications.map(application => {
+          const accountCreated = accountEmails.has(application.email);
+          const codeExpiresAt = application.activation_code_expires_at;
+          const codeIsActive = !accountCreated
+            && application.activation_code_ciphertext
+            && Number(application.activation_code_attempts) < 5
+            && codeExpiresAt
+            && new Date(codeExpiresAt).getTime() > Date.now();
+          const safeApplication = { ...application };
+          delete safeApplication.activation_code_ciphertext;
+          delete safeApplication.activation_code_attempts;
+          return {
+            ...safeApplication,
+            accountCreated,
+            activationCode: codeIsActive
+              ? decryptWorkerActivationCode(application.activation_code_ciphertext)
+              : "",
+            activation_code_expires_at: codeIsActive ? codeExpiresAt : null,
+            warnings: warnings.filter(warning => warning.email === application.email)
+          };
+        });
         const roleMap = new Map(roles.map(role => [role.id, role]));
         workers.forEach(worker => {
           const role = roleMap.get(worker.role_id);
           worker.roleName = role ? role.name : "";
         });
-        return sendJson(res, 200, { workers, roles });
+        return sendJson(res, 200, {
+          workers,
+          roles,
+          canManageSupremeRole: Boolean(admin.isSuperAdminManager)
+        });
       }
       const requests = await supabase(
-        "/rest/v1/worker_applications?select=email,name,status,created_at,reviewed_at&order=created_at.desc"
+        "/rest/v1/worker_applications?select=email,name,status,created_at,reviewed_at&status=eq.pending&order=created_at.desc"
       );
       return sendJson(res, 200, { requests });
     }
@@ -178,7 +198,9 @@ module.exports = async function handler(req, res) {
         await requireAdmin(req);
         const name = typeof payload.name === "string" ? payload.name.trim() : "";
         const permissions = normalizePermissions(payload.permissions);
-        if (!name || name.length > 80 || name.toLocaleLowerCase("es") === "administrador" || !permissions) {
+        if (!name || name.length > 80
+          || ["administrador", SUPER_ADMIN_ROLE_NAME.toLocaleLowerCase("es")].includes(name.toLocaleLowerCase("es"))
+          || !permissions) {
           return sendJson(res, 400, { error: "Revisa el nombre del rol y sus permisos." });
         }
         const [role] = await supabase("/rest/v1/worker_roles", {
@@ -220,7 +242,11 @@ module.exports = async function handler(req, res) {
             department: "",
             position: "",
             company: "",
-            role_id: null
+            role_id: null,
+            activation_code_hash: null,
+            activation_code_ciphertext: null,
+            activation_code_expires_at: null,
+            activation_code_attempts: 0
           })
         });
         return sendJson(res, 200, {
@@ -266,11 +292,12 @@ module.exports = async function handler(req, res) {
         return sendJson(res, 200, { ok: true });
       }
       if (payload.action === "role_delete" && typeof payload.id === "string") {
+        await requireAdmin(req);
         const [role] = await supabase(
           `/rest/v1/worker_roles?id=eq.${encodeURIComponent(payload.id)}&select=id,name&limit=1`
         );
         if (!role) return sendJson(res, 404, { error: "No se encontró el rol." });
-        if (role.name === "Trabajador" || role.name === "Administrador") {
+        if (role.name === "Trabajador" || role.name === "Administrador" || role.name === SUPER_ADMIN_ROLE_NAME) {
           return sendJson(res, 403, { error: "No se puede eliminar un rol protegido del sistema." });
         }
         await supabase(`/rest/v1/worker_roles?id=eq.${encodeURIComponent(payload.id)}`, { method: "DELETE" });
@@ -280,10 +307,7 @@ module.exports = async function handler(req, res) {
     }
 
     const action = payload.action;
-    const adminOnlyAction = ["catalog_update", "role_update", "update_profile", "reset_password", "warn", "dismiss"].includes(action);
-    const admin = adminOnlyAction
-      ? await requireAdmin(req)
-      : await requireWorkerPermission(req, "applications_review");
+    const admin = await requireAdmin(req);
     if (action === "catalog_update") {
       const id = typeof payload.id === "string" ? payload.id : "";
       const name = typeof payload.name === "string" ? payload.name.trim() : "";
@@ -313,14 +337,20 @@ module.exports = async function handler(req, res) {
       const id = typeof payload.id === "string" ? payload.id : "";
       const name = typeof payload.name === "string" ? payload.name.trim() : "";
       const permissions = normalizePermissions(payload.permissions);
-      if (!id || !name || name.length > 80 || name.toLocaleLowerCase("es") === "administrador" || !permissions) {
+      if (!id || !name || name.length > 80
+        || ["administrador", SUPER_ADMIN_ROLE_NAME.toLocaleLowerCase("es")].includes(name.toLocaleLowerCase("es"))
+        || !permissions) {
         return sendJson(res, 400, { error: "Revisa el nombre del rol y sus permisos." });
       }
       const [current] = await supabase(
         `/rest/v1/worker_roles?id=eq.${encodeURIComponent(id)}&select=id,name&limit=1`
       );
       if (!current) return sendJson(res, 404, { error: "No se encontró el rol." });
-      if (current.name === "Administrador" || (current.name === "Trabajador" && name !== "Trabajador")) {
+      if (current.name === SUPER_ADMIN_ROLE_NAME && !admin.isSuperAdminManager) {
+        return sendJson(res, 403, { error: "Solo el administrador supremo principal puede modificar este rol." });
+      }
+      if (current.name === "Administrador" || current.name === SUPER_ADMIN_ROLE_NAME
+        || (current.name === "Trabajador" && name !== "Trabajador")) {
         return sendJson(res, 403, { error: "No se puede crear ni modificar un rol de administrador." });
       }
       const rows = await supabase(`/rest/v1/worker_roles?id=eq.${encodeURIComponent(id)}`, {
@@ -345,7 +375,7 @@ module.exports = async function handler(req, res) {
       return sendJson(res, 403, { error: "No puedes revisar tu propia solicitud." });
     }
     const [request] = await supabase(
-      `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&select=email,name,status,department,position,company&limit=1`
+      `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&select=email,name,status,department,position,company,role_id&limit=1`
     );
     if (!request) return sendJson(res, 404, { error: "No se encontró la solicitud." });
     if (action === "update_profile") {
@@ -375,9 +405,20 @@ module.exports = async function handler(req, res) {
       }
       if (roleId) {
         const [role] = await supabase(
-          `/rest/v1/worker_roles?id=eq.${encodeURIComponent(roleId)}&select=id&limit=1`
+          `/rest/v1/worker_roles?id=eq.${encodeURIComponent(roleId)}&select=id,name&limit=1`
         );
         if (!role) return sendJson(res, 400, { error: "Selecciona un rol válido." });
+        if (role.name === SUPER_ADMIN_ROLE_NAME && !admin.isSuperAdminManager) {
+          return sendJson(res, 403, { error: `Solo ${SUPER_ADMIN_OWNER_EMAIL} puede asignar el rol Administrador supremo.` });
+        }
+      }
+      if (request.role_id) {
+        const [currentRole] = await supabase(
+          `/rest/v1/worker_roles?id=eq.${encodeURIComponent(request.role_id)}&select=name&limit=1`
+        );
+        if (currentRole && currentRole.name === SUPER_ADMIN_ROLE_NAME && !admin.isSuperAdminManager) {
+          return sendJson(res, 403, { error: "Solo el administrador supremo principal puede cambiar la asignación de ese rol." });
+        }
       }
       const rows = await supabase(
         `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.approved`,
@@ -435,8 +476,7 @@ module.exports = async function handler(req, res) {
       const activationCode = await issueWorkerActivationCode(email);
       return sendJson(res, 200, {
         ok: true,
-        activationCode,
-        message: "Código temporal generado. Entrégalo personalmente al trabajador; vence en 24 horas y solo se usa una vez."
+        message: "Código temporal generado. Está visible en Datos laborales de Personas; vence en 24 horas y solo se usa una vez."
       });
     }
     if (action === "warn" || action === "dismiss") {
@@ -470,6 +510,7 @@ module.exports = async function handler(req, res) {
           reviewed_at: new Date().toISOString(),
           reviewed_by: admin.id,
           activation_code_hash: null,
+          activation_code_ciphertext: null,
           activation_code_expires_at: null,
           activation_code_attempts: 0
         })
@@ -493,7 +534,7 @@ module.exports = async function handler(req, res) {
     if (action === "approve" && !approvalRole) {
       return sendJson(res, 503, { error: "Falta el rol predeterminado Trabajador. Ejecuta supabase/schema.sql completo." });
     }
-    const activationCode = action === "approve" ? crypto.randomBytes(8).toString("hex") : null;
+    const activationCode = action === "approve" ? String(crypto.randomInt(0, 10000)).padStart(4, "0") : null;
     const activationCodeHash = activationCode
       ? crypto.createHmac("sha256", getEnv("SUPABASE_SERVICE_ROLE_KEY")).update(activationCode).digest("hex")
       : null;
@@ -506,6 +547,7 @@ module.exports = async function handler(req, res) {
         reviewed_by: admin.id,
         ...(approvalRole ? { role_id: approvalRole.id } : {}),
         activation_code_hash: activationCodeHash,
+        activation_code_ciphertext: activationCode ? encryptWorkerActivationCode(activationCode) : null,
         activation_code_expires_at: activationCode ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null,
         activation_code_attempts: 0
       })
@@ -520,7 +562,7 @@ module.exports = async function handler(req, res) {
     return sendJson(res, 200, {
       ok: true,
       status: rows[0].status,
-      ...(activationCode ? { activationCode } : {})
+      ...(activationCode ? { activationCodeIssued: true } : {})
     });
   } catch (error) {
     const details = error.details && typeof error.details === "object" ? error.details : {};

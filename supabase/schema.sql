@@ -52,6 +52,20 @@ values (
 )
 on conflict (name) do update set permissions = excluded.permissions;
 
+insert into public.worker_roles (name, permissions)
+values (
+  'Administrador supremo',
+  array[
+    'inventory_view',
+    'sales_register',
+    'products_manage',
+    'workers_directory',
+    'applications_review',
+    'catalog_manage'
+  ]::text[]
+)
+on conflict (name) do update set permissions = excluded.permissions;
+
 create table if not exists public.worker_applications (
   email text primary key check (char_length(email) between 3 and 254),
   name text not null default '',
@@ -71,6 +85,7 @@ alter table public.worker_applications add column if not exists position text no
 alter table public.worker_applications add column if not exists company text not null default '';
 alter table public.worker_applications add column if not exists role_id uuid references public.worker_roles(id) on delete set null;
 alter table public.worker_applications add column if not exists activation_code_hash text;
+alter table public.worker_applications add column if not exists activation_code_ciphertext text;
 alter table public.worker_applications add column if not exists activation_code_expires_at timestamptz;
 alter table public.worker_applications add column if not exists activation_code_attempts integer not null default 0;
 insert into public.organization_catalogs (kind, name)
@@ -104,6 +119,31 @@ create table if not exists public.worker_users (
 );
 
 alter table public.worker_users add column if not exists name text not null default '';
+
+create or replace function public.clear_worker_activation_code()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.worker_applications
+  set activation_code_hash = null,
+      activation_code_ciphertext = null,
+      activation_code_expires_at = null,
+      activation_code_attempts = 0
+  where email = lower(trim(new.email))
+    and activation_code_hash is not null;
+  return new;
+end;
+$$;
+
+drop trigger if exists clear_worker_activation_code_after_account_creation on public.worker_users;
+create trigger clear_worker_activation_code_after_account_creation
+after insert on public.worker_users
+for each row execute function public.clear_worker_activation_code();
+revoke all on function public.clear_worker_activation_code() from public, anon, authenticated;
+grant execute on function public.clear_worker_activation_code() to service_role;
 
 create table if not exists public.worker_signup_attempts (
   email text primary key check (char_length(email) between 3 and 254),
@@ -247,20 +287,17 @@ security definer
 set search_path = public
 as $$
 declare
-  claimed_count integer;
+  v_application public.worker_applications%rowtype;
 begin
-  update public.worker_applications
-  set activation_code_hash = null,
-      activation_code_expires_at = null,
-      activation_code_attempts = 0
+  select * into v_application
+  from public.worker_applications
   where email = lower(trim(p_email))
     and status = 'approved'
     and activation_code_hash = p_code_hash
     and activation_code_expires_at > now()
-    and activation_code_attempts < 5;
-
-  get diagnostics claimed_count = row_count;
-  if claimed_count = 1 then
+    and activation_code_attempts < 5
+  for update;
+  if found then
     return true;
   end if;
 
