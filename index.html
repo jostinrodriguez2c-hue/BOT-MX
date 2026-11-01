@@ -644,7 +644,8 @@
       .brand { min-width: 0; font-size: 1rem; }
       .topbar-actions { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
       .topbar-actions > .button { width: 100%; min-width: 0; padding: .55rem .65rem; }
-      .topbar-actions > .notification-button { width: 44px; }
+      .topbar-actions > .notification-button { width: 44px; min-width: 0; justify-self: center; }
+      .topbar-actions > .notification-button:only-child { width: 44px; justify-self: start; }
       .site-nav { gap: .2rem; padding: .5rem .65rem; }
       .nav-link { padding: .55rem .65rem; }
       main { min-width: 0; padding: .25rem .75rem calc(1.25rem + env(safe-area-inset-bottom)); }
@@ -652,8 +653,8 @@
       .intro h1 { font-size: clamp(1.75rem, 8vw, 2.4rem); overflow-wrap: anywhere; }
       .inventory-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .inventory-summary-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
-      .admin-menu { grid-template-columns: 1fr; }
-      .admin-side-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .admin-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .admin-side-nav { grid-template-columns: 1fr; }
       .manage-row, .draft-row, .worker-request-row { min-width: 0; }
       .manage-row-info, .approved-worker-details { width: 100%; overflow-wrap: anywhere; }
       .toolbar > .button, .form-actions > .button { max-width: 100%; }
@@ -667,10 +668,11 @@
       #detailDialog { width: calc(100% - 1rem); max-height: calc(100dvh - 1rem); }
       .detail-dialog-content { padding: 0; }
     }
-    @media (max-width: 380px) {
+    @media (max-width: 360px) {
       .app-shell { width: calc(100% - .5rem); margin: .25rem auto; border-radius: 14px; }
-      .topbar-actions > .button { flex-basis: 100%; }
-      .topbar-actions > .notification-button { flex-basis: 44px; }
+      .topbar-actions { grid-template-columns: minmax(0, 1fr); }
+      .topbar-actions > .button { grid-column: 1; }
+      .topbar-actions > .notification-button { width: 44px; justify-self: start; }
       .admin-side-nav { grid-template-columns: 1fr; }
       .inventory-summary-card { padding: .65rem; }
       .button { padding-right: .7rem; padding-left: .7rem; }
@@ -5276,7 +5278,7 @@
       authSessionExpiresAt = Date.now() + AUTH_SESSION_DURATION_MS;
       scheduleAuthSessionExpiry();
       notificationIdentity = "local-admin";
-      isAdminPanelOpen = true;
+      isAdminPanelOpen = false;
       activeAdminModule = "people";
       activeAdminSection = null;
       activeRoute = "home";
@@ -5285,7 +5287,6 @@
       closeDialog(elements.localAdminDialog);
       recordActivity("Inicio de sesión", "Acceso local de administrador para pruebas");
       render();
-      elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     elements.workerLoginForm.addEventListener("submit", async event => {
@@ -5307,14 +5308,14 @@
           adminAccessToken = session.access_token;
           isAdmin = true;
           canManageSupremeRole = Boolean(session.user.isSuperAdminManager);
-          isAdminPanelOpen = true;
+          isAdminPanelOpen = false;
           activeAdminModule = "people";
           activeRoute = "home";
         } else {
           workerAccessToken = session.access_token;
           isWorker = true;
           workerPermissions = Array.isArray(session.user.permissions) ? session.user.permissions : [];
-          activeRoute = "inventory";
+          activeRoute = "home";
           activeInventorySection = "home";
           try {
             localStorage.removeItem(APPLICATION_NOTIFICATION_TOKEN_KEY);
@@ -5350,7 +5351,6 @@
         refreshPendingWorkerRequestCount().catch(error =>
           console.error("No se pudo actualizar el contador de solicitudes pendientes.", error)
         );
-        if (isAdmin) elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (error) {
         setStatus(elements.workerLoginStatus, error.message, "error");
       }
