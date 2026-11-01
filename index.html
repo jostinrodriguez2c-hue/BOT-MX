@@ -284,6 +284,10 @@
     .inventory-summary-card { padding: .8rem; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
     .inventory-summary-card strong { display: block; font-size: 1.15rem; }
     .inventory-summary-card span { color: var(--muted); font-size: .78rem; }
+    .inventory-search-suggestions { display: grid; gap: .35rem; width: 100%; padding: .45rem; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: 0 12px 28px #0002; }
+    .inventory-search-suggestions button { padding: .65rem .75rem; border: 0; border-radius: 8px; color: var(--ink); background: transparent; text-align: left; }
+    .inventory-search-suggestions button:hover, .inventory-search-suggestions button:focus-visible { background: var(--soft-blue); }
+    .inventory-search-suggestions small { display: block; margin-top: .15rem; color: var(--muted); }
     .category-controls { display: flex; flex-wrap: wrap; gap: .4rem; }
     .category-editor { display: grid; gap: .45rem; padding: .75rem; border: 1px solid var(--line); border-radius: 10px; background: #111a2b; }
     .inventory-actions { display: flex; flex-wrap: wrap; align-items: end; justify-content: flex-end; gap: .45rem; }
@@ -628,6 +632,49 @@
       .worker-access-grid { grid-template-columns: 1fr; }
       .worker-request-row { align-items: flex-start; flex-direction: column; }
     }
+    @media (max-width: 900px) {
+      .admin-layout { grid-template-columns: 1fr; }
+      .admin-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .owner-quick-nav { position: static; display: flex; width: min(100% - 1rem, 1080px); justify-content: flex-end; margin: 0 auto 1rem; }
+      .owner-quick-links { top: auto; bottom: calc(100% + .55rem); }
+    }
+    @media (max-width: 640px) {
+      .app-shell { width: calc(100% - 1rem); margin: .5rem auto; border-radius: 17px; }
+      .topbar { flex-wrap: wrap; gap: .75rem; padding: .8rem; }
+      .brand { min-width: 0; font-size: 1rem; }
+      .topbar-actions { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem; }
+      .topbar-actions > .button { width: 100%; min-width: 0; padding: .55rem .65rem; }
+      .topbar-actions > .notification-button { width: 44px; }
+      .site-nav { gap: .2rem; padding: .5rem .65rem; }
+      .nav-link { padding: .55rem .65rem; }
+      main { min-width: 0; padding: .25rem .75rem calc(1.25rem + env(safe-area-inset-bottom)); }
+      .intro { padding: 1.35rem 1rem; }
+      .intro h1 { font-size: clamp(1.75rem, 8vw, 2.4rem); overflow-wrap: anywhere; }
+      .inventory-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .inventory-summary-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+      .admin-menu { grid-template-columns: 1fr; }
+      .admin-side-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .manage-row, .draft-row, .worker-request-row { min-width: 0; }
+      .manage-row-info, .approved-worker-details { width: 100%; overflow-wrap: anywhere; }
+      .toolbar > .button, .form-actions > .button { max-width: 100%; }
+      .form-actions { width: 100%; }
+      .filter-bar > input, .filter-bar > select { min-width: 0; width: 100%; }
+      input, select, textarea { max-width: 100%; min-width: 0; }
+      dialog { width: calc(100% - 1rem); max-width: 520px; max-height: calc(100dvh - 1rem); border-radius: 16px; }
+      .dialog-content { padding: 1rem; }
+      .dialog-actions { flex-wrap: wrap; }
+      .dialog-actions > .button { flex: 1 1 130px; }
+      #detailDialog { width: calc(100% - 1rem); max-height: calc(100dvh - 1rem); }
+      .detail-dialog-content { padding: 0; }
+    }
+    @media (max-width: 380px) {
+      .app-shell { width: calc(100% - .5rem); margin: .25rem auto; border-radius: 14px; }
+      .topbar-actions > .button { flex-basis: 100%; }
+      .topbar-actions > .notification-button { flex-basis: 44px; }
+      .admin-side-nav { grid-template-columns: 1fr; }
+      .inventory-summary-card { padding: .65rem; }
+      .button { padding-right: .7rem; padding-left: .7rem; }
+    }
   </style>
 </head>
 <body>
@@ -636,7 +683,7 @@
     <div class="brand"><img class="brand-mark" src="assets/encuentralo12-mark.png" alt="" aria-hidden="true"><span>Encuentralo12</span></div>
     <div class="topbar-actions">
       <button class="button button-secondary" id="openAdminPanelButton" type="button" hidden>Abrir panel</button>
-      <button class="button button-primary" id="manageAllButton" type="button" hidden>Administrar todo</button>
+      <button class="button button-primary" id="manageAllButton" type="button" aria-expanded="false" aria-controls="adminView" hidden>Abrir panel adm</button>
       <button class="button button-secondary request-count-button" id="workerRequestsButton" type="button" hidden>
         Ver solicitudes<span class="notification-badge" id="workerRequestBadge" hidden>0</span>
       </button>
@@ -764,6 +811,13 @@
       </div>
       <p class="status-message" id="purchaseReturnStatus" role="status" aria-live="polite" hidden></p>
       <div class="inventory-workspace">
+        <div class="toolbar">
+          <button class="button button-secondary" id="inventorySearchToggle" type="button" aria-expanded="false" aria-controls="inventorySearchPanel">Buscar productos</button>
+        </div>
+        <div class="filter-bar" id="inventorySearchPanel" hidden>
+          <input id="inventorySearchInput" type="search" autocomplete="off" placeholder="Escribe el nombre del producto" aria-label="Buscar productos por nombre">
+          <div class="inventory-search-suggestions" id="inventorySearchSuggestions" role="listbox" aria-label="Sugerencias de productos" hidden></div>
+        </div>
         <div class="toolbar" id="inventoryLandingActions">
           <button class="button button-primary" id="inventoryRegisterSaleButton" type="button">Registrar venta</button>
           <button class="button button-secondary" id="inventoryAddProductButton" type="button">Agregar producto</button>
@@ -1440,6 +1494,10 @@
       acceptConfirmAction: document.querySelector("#acceptConfirmAction"),
       siteNav: document.querySelector("#siteNav"),
       homeBackButton: document.querySelector("#homeBackButton"),
+      inventorySearchToggle: document.querySelector("#inventorySearchToggle"),
+      inventorySearchPanel: document.querySelector("#inventorySearchPanel"),
+      inventorySearchInput: document.querySelector("#inventorySearchInput"),
+      inventorySearchSuggestions: document.querySelector("#inventorySearchSuggestions"),
       routeViews: [...document.querySelectorAll(".route-view")],
       peopleSearch: document.querySelector("#peopleSearch"),
       peopleDepartmentFilter: document.querySelector("#peopleDepartmentFilter"),
@@ -1567,6 +1625,7 @@
     let pendingPortalDelete = null;
     let activeRoute = /^[0-9a-f-]{36}$/i.test(PAYMENT_RETURN_ORDER_ID || "") ? "inventory" : "welcome";
     let adminReturnState = null;
+    let visitorReturnState = null;
     let activeInventorySection = "home";
     let activeAdminModule = "people";
     let adminWorkersLoaded = false;
@@ -2724,7 +2783,9 @@
       }
 
       elements.manageAllButton.hidden = !isAdmin;
-      elements.openAdminPanelButton.hidden = !isAdmin;
+      elements.manageAllButton.textContent = activeRoute === "admin" ? "Cerrar panel adm" : "Abrir panel adm";
+      elements.manageAllButton.setAttribute("aria-expanded", String(isAdmin && activeRoute === "admin"));
+      elements.openAdminPanelButton.hidden = !isAdmin || activeRoute === "admin";
       elements.openAdminPanelButton.textContent =
         activeRoute === "home" && isAdminPanelOpen ? "Cerrar panel" : "Abrir panel";
       elements.workerRequestsButton.hidden = !isAdmin;
@@ -2746,6 +2807,8 @@
         button.setAttribute("aria-current", button.dataset.route === activeRoute ? "page" : "false");
       });
       document.querySelector("#logoutButton").hidden = !isAdmin && !isWorker;
+      elements.homeBackButton.textContent = entryMode === "visitor" && !hasInventoryAccess() ? "Volver" : "Volver al inicio";
+      elements.inventoryBackButton.textContent = entryMode === "visitor" && !hasInventoryAccess() ? "Volver" : "Volver al inicio";
       elements.entryModeChooser.hidden = entryMode !== "choose";
       elements.visitorChooser.hidden = entryMode !== "visitor";
       elements.workerAccess.hidden = entryMode !== "worker";
@@ -2757,7 +2820,13 @@
       renderAdminWorkspace();
       const inventoryViewOpen = activeRoute === "inventory";
       const inventoryManagementOpen = hasInventoryAccess() && inventoryViewOpen && activeInventorySection === "home";
+      const inventorySearchAvailable = inventoryViewOpen && (!hasInventoryAccess() || activeInventorySection === "home");
       document.querySelector("#inventoryPageTitle").textContent = hasInventoryAccess() ? "Inventario" : "Productos";
+      elements.inventorySearchToggle.hidden = !inventorySearchAvailable;
+      if (!inventorySearchAvailable) {
+        elements.inventorySearchPanel.hidden = true;
+        elements.inventorySearchToggle.setAttribute("aria-expanded", "false");
+      }
       elements.inventoryLandingActions.hidden = !inventoryManagementOpen;
       elements.inventoryRegisterSaleButton.hidden = !canRegisterSales();
       elements.inventoryAddProductButton.hidden = !canManageProducts();
@@ -2829,6 +2898,11 @@
     function renderInventory() {
       populateInventoryProductOptions();
       elements.inventoryManageList.replaceChildren();
+      const searchQuery = elements.inventorySearchInput.value.trim().toLocaleLowerCase("es");
+      const matchingProducts = inventory.filter(product =>
+        !searchQuery || product.name.toLocaleLowerCase("es").includes(searchQuery)
+      );
+      renderInventorySearchSuggestions(searchQuery);
 
       const summary = document.createElement("div");
       summary.className = "inventory-summary";
@@ -2849,7 +2923,7 @@
         card.append(amount, caption);
         summary.append(card);
       }
-      if (canManageProducts()) elements.inventoryManageList.append(summary);
+      if (hasInventoryAccess()) elements.inventoryManageList.append(summary);
       const selectedProductId = elements.inventorySaleProduct.value;
       elements.inventorySaleProduct.replaceChildren(new Option("Selecciona un producto", ""));
       const productsInStock = inventory.filter(product => availableStock(product) > 0);
@@ -2864,17 +2938,19 @@
       }
       updateInventorySaleQuantityLimit();
 
-      if (inventory.length === 0) {
+      if (matchingProducts.length === 0) {
         const empty = document.createElement("p");
         empty.className = "manage-empty";
-        empty.textContent = canManageProducts()
-          ? "Todavía no hay productos. Selecciona Agregar producto para empezar."
-          : "Aún no hay productos disponibles.";
+        empty.textContent = inventory.length === 0
+          ? canManageProducts()
+            ? "Todavía no hay productos. Selecciona Agregar producto para empezar."
+            : "Aún no hay productos disponibles."
+          : "No se encontraron productos con ese nombre.";
         elements.inventoryManageList.append(empty);
         return;
       }
 
-      for (const product of inventory) {
+      for (const product of matchingProducts) {
         const row = document.createElement("article");
         row.className = "manage-row inventory-row";
 
@@ -2886,7 +2962,7 @@
         const details = document.createElement("div");
         details.className = "draft-label";
         const stockLabel = canManageProducts() ? `${product.stock} ${product.unit} en inventario` : `${availableStock(product)} ${product.unit} disponibles`;
-        details.textContent = `${product.category ? `${product.category} · ` : ""}${stockLabel}${canManageProducts() ? ` · ${product.sold || 0} vendidos · ${formatUsd(product.price_cents)}` : ` · ${formatUsd(product.price_cents)}`}`;
+        details.textContent = `${product.category ? `${product.category} · ` : ""}${stockLabel}${hasInventoryAccess() ? ` · ${product.sold || 0} vendidos` : ""} · ${formatUsd(product.price_cents)}`;
         info.append(title, details);
 
         const actions = document.createElement("div");
@@ -2927,6 +3003,37 @@
         row.append(info, actions);
         elements.inventoryManageList.append(row);
       }
+    }
+
+    function renderInventorySearchSuggestions(query) {
+      const suggestions = elements.inventorySearchSuggestions;
+      suggestions.replaceChildren();
+      if (!query) {
+        suggestions.hidden = true;
+        return;
+      }
+      const matches = inventory.filter(product => product.name.toLocaleLowerCase("es").includes(query)).slice(0, 6);
+      if (!matches.length) {
+        suggestions.hidden = true;
+        return;
+      }
+      matches.forEach(product => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute("role", "option");
+        const name = document.createElement("span");
+        name.textContent = product.name;
+        const category = document.createElement("small");
+        category.textContent = product.category || "Producto";
+        button.append(name, category);
+        button.addEventListener("click", () => {
+          elements.inventorySearchInput.value = product.name;
+          renderInventory();
+          elements.inventorySearchInput.focus();
+        });
+        suggestions.append(button);
+      });
+      suggestions.hidden = false;
     }
 
     function updateInventorySaleQuantityLimit() {
@@ -3541,6 +3648,14 @@
           scrollY: window.scrollY
         };
       }
+      if (["home", "inventory"].includes(route) && entryMode === "visitor" && activeRoute === "welcome") {
+        visitorReturnState = {
+          route: activeRoute,
+          entryMode,
+          inventorySection: activeInventorySection,
+          scrollY: window.scrollY
+        };
+      }
       activeRoute = route;
       if (route === "welcome") entryMode = "choose";
       if (route === "inventory") activeInventorySection = hasInventoryAccess() ? "home" : "catalog";
@@ -3553,6 +3668,18 @@
         loadRemoteInventory().catch(error => setStatus(elements.adminStatus, error.message, "error"));
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function returnToPreviousVisitorPage() {
+      if (hasInventoryAccess() || entryMode !== "visitor") return false;
+      const previous = visitorReturnState;
+      visitorReturnState = null;
+      activeRoute = previous ? previous.route : "welcome";
+      entryMode = previous ? previous.entryMode : "visitor";
+      activeInventorySection = previous ? previous.inventorySection : "catalog";
+      render();
+      window.scrollTo({ top: previous ? previous.scrollY : 0, behavior: "smooth" });
+      return true;
     }
 
     function renderAdminModule() {
@@ -4315,6 +4442,7 @@
     });
 
     elements.homeBackButton.addEventListener("click", () => {
+      if (returnToPreviousVisitorPage()) return;
       activeRoute = "welcome";
       entryMode = "choose";
       isAdminPanelOpen = false;
@@ -4323,6 +4451,7 @@
     });
 
     elements.inventoryBackButton.addEventListener("click", () => {
+      if (returnToPreviousVisitorPage()) return;
       activeRoute = "welcome";
       entryMode = "choose";
       activeAdminSection = null;
@@ -4330,6 +4459,22 @@
       isAdminPanelOpen = false;
       render();
       window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    elements.inventorySearchToggle.addEventListener("click", () => {
+      const open = elements.inventorySearchPanel.hidden;
+      elements.inventorySearchPanel.hidden = !open;
+      elements.inventorySearchToggle.setAttribute("aria-expanded", String(open));
+      if (open) {
+        elements.inventorySearchInput.focus();
+      } else {
+        elements.inventorySearchInput.value = "";
+        renderInventory();
+      }
+    });
+
+    elements.inventorySearchInput.addEventListener("input", () => {
+      if (activeRoute === "inventory") renderInventory();
     });
 
     elements.inventoryRegisterSaleButton.addEventListener("click", () => {
@@ -5086,6 +5231,7 @@
     elements.visitorEntryButton.addEventListener("click", () => {
       entryMode = "visitor";
       activeRoute = "welcome";
+      visitorReturnState = null;
       render();
     });
 
@@ -5278,6 +5424,10 @@
 
     elements.manageAllButton.addEventListener("click", () => {
       if (!isAdmin) return;
+      if (activeRoute === "admin") {
+        elements.adminBackButton.click();
+        return;
+      }
       setRoute("admin");
     });
 
