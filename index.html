@@ -72,14 +72,12 @@
 
     .brand { display: flex; align-items: center; gap: .75rem; font-weight: 750; letter-spacing: -.02em; }
     .brand-mark {
-      display: grid;
+      display: block;
       width: 40px;
       height: 40px;
-      place-items: center;
+      flex: none;
       border-radius: 14px;
-      color: #fff;
-      background: linear-gradient(145deg, #627af5, #3e56d7);
-      font-size: 1.15rem;
+      object-fit: cover;
       box-shadow: 0 7px 18px #4965e84a;
     }
 
@@ -635,7 +633,7 @@
 <body>
   <div class="app-shell">
   <header class="topbar">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">E</span><span>encuentralo12</span></div>
+    <div class="brand"><img class="brand-mark" src="assets/encuentralo12-mark.png" alt="" aria-hidden="true"><span>Encuentralo12</span></div>
     <div class="topbar-actions">
       <button class="button button-secondary" id="openAdminPanelButton" type="button" hidden>Abrir panel</button>
       <button class="button button-primary" id="manageAllButton" type="button" hidden>Administrar todo</button>
@@ -2754,8 +2752,7 @@
       elements.localAdminEntryButton.hidden = REMOTE_INVENTORY_ENABLED || entryMode !== "worker" || isAdmin;
       populateDirectoryFilters();
       renderPublicPages();
-      document.querySelector(".brand > span:last-child").textContent =
-        activeRoute === "home" ? "Personas" : "encuentralo12";
+      document.querySelector(".brand > span:last-child").textContent = "Encuentralo12";
       renderAdminModule();
       renderAdminWorkspace();
       const inventoryViewOpen = activeRoute === "inventory";
