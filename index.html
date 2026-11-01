@@ -1369,6 +1369,7 @@
     const PERSONAL_NOTIFICATION_STORAGE_KEY = "wilcox-personal-notifications-v1";
     const PAGE_SESSION_KEY = "wilcox-page-session-v1";
     const AUTH_SESSION_KEY = "wilcox-auth-session-v1";
+    const AUTH_SESSION_DURATION_MS = 30 * 60 * 1000;
     const REGION_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW XK".split(" ");
 
     const elements = {
@@ -1530,6 +1531,8 @@
     let workerPermissions = [];
     let adminAccessToken = null;
     let workerAccessToken = null;
+    let authSessionExpiresAt = null;
+    let authSessionExpiryTimer = null;
     let entryMode = "choose";
     let isAdminPanelOpen = false;
     let pendingPublishId = null;
@@ -2369,11 +2372,12 @@
       const localAdmin = isAdmin && !adminAccessToken && !REMOTE_INVENTORY_ENABLED;
       const accessToken = adminAccessToken || workerAccessToken;
       if (localAdmin) {
-        writeSessionJson(AUTH_SESSION_KEY, { role: "local-admin" });
+        writeSessionJson(AUTH_SESSION_KEY, { role: "local-admin", expiresAt: authSessionExpiresAt });
       } else if (accessToken) {
         writeSessionJson(AUTH_SESSION_KEY, {
           role: isAdmin ? "admin" : "worker",
-          accessToken
+          accessToken,
+          expiresAt: authSessionExpiresAt
         });
       } else {
         writeSessionJson(AUTH_SESSION_KEY, null);
@@ -2391,6 +2395,45 @@
       });
     }
 
+    function clearAuthSession() {
+      if (authSessionExpiryTimer) {
+        window.clearTimeout(authSessionExpiryTimer);
+        authSessionExpiryTimer = null;
+      }
+      authSessionExpiresAt = null;
+      isAdmin = false;
+      isWorker = false;
+      adminAccessToken = null;
+      workerAccessToken = null;
+      workerPermissions = [];
+      notificationIdentity = "visitor";
+      isAdminPanelOpen = false;
+      activeAdminSection = null;
+      editingPersonId = null;
+      writeSessionJson(AUTH_SESSION_KEY, null);
+    }
+
+    function expireAuthSession() {
+      clearAuthSession();
+      activeRoute = "welcome";
+      entryMode = "worker";
+      activeInventorySection = "home";
+      pageSessionReady = true;
+      render();
+      setStatus(elements.workerLoginStatus, "Tu sesión terminó después de 30 minutos. Inicia sesión de nuevo.", "error");
+    }
+
+    function scheduleAuthSessionExpiry() {
+      if (authSessionExpiryTimer) window.clearTimeout(authSessionExpiryTimer);
+      if (!authSessionExpiresAt) return;
+      const remaining = authSessionExpiresAt - Date.now();
+      if (remaining <= 0) {
+        expireAuthSession();
+        return;
+      }
+      authSessionExpiryTimer = window.setTimeout(expireAuthSession, remaining);
+    }
+
     async function restorePageSession() {
       const state = readSessionJson(PAGE_SESSION_KEY);
       const savedAuth = readSessionJson(AUTH_SESSION_KEY);
@@ -2401,13 +2444,36 @@
       }
 
       if (savedAuth && savedAuth.role === "local-admin" && !REMOTE_INVENTORY_ENABLED) {
+        const savedExpiry = Number(savedAuth.expiresAt);
+        if (Number.isFinite(savedExpiry) && savedExpiry <= Date.now()) {
+          writeSessionJson(AUTH_SESSION_KEY, null);
+          entryMode = "worker";
+          activeRoute = "welcome";
+          pageSessionReady = true;
+          return;
+        }
+        authSessionExpiresAt = Number.isFinite(savedExpiry)
+          ? savedExpiry
+          : Date.now() + AUTH_SESSION_DURATION_MS;
         isAdmin = true;
         notificationIdentity = "local-admin";
+        scheduleAuthSessionExpiry();
       } else if (
         savedAuth
         && ["admin", "worker"].includes(savedAuth.role)
         && typeof savedAuth.accessToken === "string"
       ) {
+        const savedExpiry = Number(savedAuth.expiresAt);
+        if (Number.isFinite(savedExpiry) && savedExpiry <= Date.now()) {
+          writeSessionJson(AUTH_SESSION_KEY, null);
+          entryMode = "worker";
+          activeRoute = "welcome";
+          pageSessionReady = true;
+          return;
+        }
+        authSessionExpiresAt = Number.isFinite(savedExpiry)
+          ? savedExpiry
+          : Date.now() + AUTH_SESSION_DURATION_MS;
         try {
           const result = await apiRequest("/api/auth", {
             method: "GET",
@@ -2435,6 +2501,7 @@
           pageSessionReady = true;
           return;
         }
+        scheduleAuthSessionExpiry();
       }
 
       const allowedRoute = ["welcome", "home", "inventory", "admin"];
@@ -4846,6 +4913,18 @@
     });
 
     elements.workerEntryButton.addEventListener("click", () => {
+      if ((isAdmin || isWorker) && authSessionExpiresAt && authSessionExpiresAt <= Date.now()) {
+        expireAuthSession();
+        return;
+      }
+      if (isAdmin) {
+        setRoute("admin");
+        return;
+      }
+      if (isWorker) {
+        setRoute("inventory");
+        return;
+      }
       entryMode = "worker";
       activeRoute = "welcome";
       render();
@@ -4871,6 +4950,8 @@
         return;
       }
       isAdmin = true;
+      authSessionExpiresAt = Date.now() + AUTH_SESSION_DURATION_MS;
+      scheduleAuthSessionExpiry();
       notificationIdentity = "local-admin";
       isAdminPanelOpen = true;
       activeAdminModule = "people";
@@ -4925,6 +5006,8 @@
           }
           throw error;
         }
+        authSessionExpiresAt = Date.now() + AUTH_SESSION_DURATION_MS;
+        scheduleAuthSessionExpiry();
         elements.workerLoginForm.reset();
         setStatus(elements.workerLoginStatus, "", "");
         notificationIdentity = String(session.user.email || "").toLowerCase();
@@ -5087,10 +5170,7 @@
         } catch (error) {
           console.error("No se pudo registrar el cierre de sesión del trabajador.", error);
         }
-        notificationIdentity = "visitor";
-        isWorker = false;
-        workerPermissions = [];
-        workerAccessToken = null;
+        clearAuthSession();
         activeRoute = "welcome";
         activeInventorySection = "home";
         entryMode = "choose";
@@ -5111,13 +5191,7 @@
       } catch (error) {
         console.error("No se pudo registrar el cierre de sesión del administrador.", error);
       }
-      notificationIdentity = "visitor";
-      isAdmin = false;
-      adminAccessToken = null;
-      workerPermissions = [];
-      isAdminPanelOpen = false;
-      activeAdminSection = null;
-      editingPersonId = null;
+      clearAuthSession();
       activeRoute = "welcome";
       entryMode = "choose";
       setStatus(elements.adminStatus, "", "");
