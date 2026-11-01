@@ -539,6 +539,8 @@
     .approved-worker-details { display: grid; min-width: 0; gap: .35rem; }
     .approved-worker-details strong { overflow-wrap: anywhere; }
     .approved-worker-details span, .approved-worker-details small { color: var(--muted); overflow-wrap: anywhere; }
+    .worker-activation-code-row { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+    .worker-activation-code-row small { margin: 0; }
     .approved-worker-actions { display: grid; min-width: min(230px, 100%); gap: .45rem; }
     .approved-worker-actions input { min-width: 0; padding: .55rem; border: 1px solid #34425d; border-radius: 8px; color: var(--ink); background: #101827; }
     .approved-worker-actions select { min-width: 0; padding: .55rem; border: 1px solid #34425d; border-radius: 8px; color: var(--ink); background: #101827; }
@@ -3707,6 +3709,29 @@
         email.textContent = worker.email || "";
         details.append(name, email);
         if (assignmentOnly) {
+          if (!worker.accountCreated) {
+            const activationCodeRow = document.createElement("div");
+            activationCodeRow.className = "worker-activation-code-row";
+            const activationCode = document.createElement("small");
+            if (worker.activationCode) {
+              const expiry = new Date(worker.activation_code_expires_at);
+              activationCode.textContent = `Código temporal: ${worker.activationCode} · vence ${new Intl.DateTimeFormat("es-PA", {
+                dateStyle: "short",
+                timeStyle: "short",
+                timeZone: "America/Panama"
+              }).format(expiry)}`;
+            } else {
+              activationCode.textContent = "Sin código temporal activo.";
+            }
+            const issueCode = document.createElement("button");
+            issueCode.type = "button";
+            issueCode.className = "button button-secondary button-small";
+            issueCode.textContent = "Dar otro código";
+            issueCode.dataset.workerAction = "issue_activation_code";
+            issueCode.dataset.workerEmail = worker.email;
+            activationCodeRow.append(activationCode, issueCode);
+            details.append(activationCodeRow);
+          }
           const assignmentActions = document.createElement("div");
           assignmentActions.className = "approved-worker-actions";
           assignmentActions.append(
@@ -3731,24 +3756,6 @@
             roleSelect.disabled = true;
           }
           assignmentActions.append(createWorkerAssignmentField("Rol", roleSelect));
-          if (worker.activationCode) {
-            const activationCode = document.createElement("small");
-            const expiry = new Date(worker.activation_code_expires_at);
-            activationCode.textContent = `Código temporal: ${worker.activationCode} · vence ${new Intl.DateTimeFormat("es-PA", {
-              dateStyle: "short",
-              timeStyle: "short",
-              timeZone: "America/Panama"
-            }).format(expiry)}`;
-            assignmentActions.append(activationCode);
-          } else if (!worker.accountCreated) {
-            const issueCode = document.createElement("button");
-            issueCode.type = "button";
-            issueCode.className = "button button-secondary button-small";
-            issueCode.textContent = "Generar código temporal de 4 dígitos";
-            issueCode.dataset.workerAction = "issue_activation_code";
-            issueCode.dataset.workerEmail = worker.email;
-            assignmentActions.append(issueCode);
-          }
           const saveProfile = document.createElement("button");
           saveProfile.type = "button";
           saveProfile.className = "button button-secondary button-small";
