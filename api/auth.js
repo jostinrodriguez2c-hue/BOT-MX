@@ -1,9 +1,11 @@
+const crypto = require("node:crypto");
 const {
   body,
   getEnv,
   onlyMethod,
   publicError,
   requireInventoryAccess,
+  rpc,
   sendJson,
   supabase,
   writeActivity
@@ -77,198 +79,110 @@ async function login(email, password, res) {
   });
 }
 
-async function removeUnconfirmedWorkerAccount(userId) {
-  if (typeof userId !== "string" || !userId) {
-    throw new Error("Supabase no proporcionó el identificador de la cuenta que se debe revisar.");
-  }
-  const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const base = getEnv("SUPABASE_URL").replace(/\/+$/, "");
-  let response;
-  try {
-    response = await fetch(`${base}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`
-      }
-    });
-  } catch (error) {
-    console.error("No se pudo comprobar la cuenta de autenticación del trabajador.", error.message);
-    throw new Error("No se pudo comprobar la cuenta actual en Supabase.");
-  }
-  if (response.status === 404) return true;
-  if (!response.ok) throw new Error("No se pudo comprobar la cuenta actual en Supabase.");
-
-  let result;
-  try {
-    result = await response.json();
-  } catch {
-    throw new Error("Supabase devolvió datos no válidos al comprobar la cuenta.");
-  }
-  const user = result && result.user ? result.user : result;
-  const hasConfirmationField = user
-    && (Object.prototype.hasOwnProperty.call(user, "email_confirmed_at")
-      || Object.prototype.hasOwnProperty.call(user, "confirmed_at"));
-  if (!hasConfirmationField) throw new Error("Supabase no indicó el estado de confirmación del correo.");
-  if (user.email_confirmed_at || user.confirmed_at) return false;
-
-  try {
-    response = await fetch(`${base}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
-      method: "DELETE",
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`
-      }
-    });
-  } catch (error) {
-    console.error("No se pudo eliminar la cuenta de trabajador sin confirmar.", error.message);
-    throw new Error("No se pudo reemplazar la cuenta pendiente en Supabase.");
-  }
-  if (!response.ok && response.status !== 404) {
-    throw new Error("No se pudo reemplazar la cuenta pendiente en Supabase.");
-  }
-  return true;
-}
-
-async function register(email, password, res) {
+async function activateWorker(email, code, password, res) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254
+    || typeof code !== "string" || !/^[a-f0-9]{16}$/i.test(code)
     || typeof password !== "string" || password.length < 12 || password.length > 128) {
-    return sendJson(res, 400, { error: "Escribe un correo válido y una contraseña de al menos 12 caracteres." });
+    return sendJson(res, 400, { error: "Escribe un correo válido, el código temporal de 16 caracteres y una contraseña de al menos 12 caracteres." });
   }
   const [application] = await supabase(
     `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.approved&select=email,name&limit=1`
   );
   if (!application) {
-    return sendJson(res, 403, { error: "Necesitas una solicitud aprobada para crear una cuenta de trabajador." });
+    return sendJson(res, 403, { error: "No hay una solicitud aprobada para ese correo." });
   }
   const [existing] = await supabase(
     `/rest/v1/worker_users?email=eq.${encodeURIComponent(email)}&select=user_id&limit=1`
   );
   if (existing) {
-    let replaced;
-    try {
-      replaced = await removeUnconfirmedWorkerAccount(existing.user_id);
-    } catch (error) {
-      return sendJson(res, 503, { error: error.message });
-    }
-    if (!replaced) {
-      return sendJson(res, 409, {
-        error: "Este correo ya tiene una cuenta confirmada. Inicia sesión; no se puede crear otra cuenta con el mismo correo."
-      });
-    }
-    await supabase(`/rest/v1/worker_users?email=eq.${encodeURIComponent(email)}`, { method: "DELETE" });
+    return sendJson(res, 409, { error: "Ese correo ya tiene una cuenta. Inicia sesión o pide al administrador que restablezca tu acceso." });
+  }
+  const codeHash = crypto.createHmac("sha256", getEnv("SUPABASE_SERVICE_ROLE_KEY"))
+    .update(code.toLowerCase())
+    .digest("hex");
+  const claimed = await rpc("consume_worker_activation_code", {
+    p_email: email,
+    p_code_hash: codeHash
+  });
+  if (claimed !== true) {
+    return sendJson(res, 400, { error: "El código no es válido, venció o alcanzó el límite de intentos. Pide al administrador que genere otro." });
   }
 
-  let response;
+  const serviceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+  let authResponse;
   try {
-    response = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/signup`, {
+    authResponse = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/admin/users`, {
       method: "POST",
       headers: {
-        apikey: getEnv("SUPABASE_ANON_KEY"),
+        apikey: serviceRoleKey,
+        Authorization: `******`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: application.name || "" }
+      })
     });
   } catch (error) {
-    console.error("No se pudo conectar con Supabase para crear la cuenta.", error.message);
-    return sendJson(res, 502, {
-      error: "No se pudo conectar con Supabase para crear la cuenta. Inténtalo de nuevo."
-    });
+    console.error("No se pudo conectar con Supabase para activar la cuenta.", error.message);
+    return sendJson(res, 502, { error: "No se pudo conectar con Supabase. Pide al administrador que genere un código nuevo y vuelve a intentarlo." });
   }
-  let result;
+  let authResult;
   try {
-    result = await response.json();
+    authResult = await authResponse.json();
   } catch {
-    return sendJson(res, 502, {
-      error: "Supabase devolvió una respuesta no válida al crear la cuenta."
-    });
+    return sendJson(res, 502, { error: "Supabase devolvió una respuesta no válida. Pide al administrador que genere un código nuevo." });
   }
-  let authResult = result && typeof result === "object" ? result : {};
-  if (authResult.user && Array.isArray(authResult.user.identities) && authResult.user.identities.length === 0) {
-    let replaced;
-    try {
-      replaced = await removeUnconfirmedWorkerAccount(authResult.user.id);
-    } catch (error) {
-      return sendJson(res, 503, { error: error.message });
-    }
-    if (!replaced) {
-      return sendJson(res, 409, {
-        error: "Este correo ya tiene una cuenta confirmada. Inicia sesión; no se puede crear otra cuenta con el mismo correo."
-      });
-    }
-    await supabase(`/rest/v1/worker_users?email=eq.${encodeURIComponent(email)}`, { method: "DELETE" });
-    try {
-      response = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/signup`, {
-        method: "POST",
-        headers: {
-          apikey: getEnv("SUPABASE_ANON_KEY"),
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ email, password })
-      });
-      result = await response.json();
-    } catch (error) {
-      console.error("No se pudo reintentar el registro del correo aprobado.", error.message);
-      return sendJson(res, 502, { error: "No se pudo completar el registro. Inténtalo de nuevo." });
-    }
-    authResult = result && typeof result === "object" ? result : {};
-    if (authResult.user && Array.isArray(authResult.user.identities) && authResult.user.identities.length === 0) {
-      return sendJson(res, 409, {
-        error: "Ese correo ya tiene una cuenta en Supabase. Inicia sesión o contacta al administrador para revisar el registro."
-      });
-    }
-  }
-  if (!response.ok || !authResult.user || !authResult.user.id) {
-    const providerError = `${authResult.error_code || authResult.code || ""} ${authResult.msg || authResult.message || authResult.error_description || ""}`.toLowerCase();
-    if (/rate.?limit|email.*limit|too many requests/.test(providerError)) {
-      return sendJson(res, 429, { error: "Supabase limitó temporalmente los registros por correo. Inténtalo más tarde." });
-    }
-    if (/password|weak/.test(providerError)) {
-      return sendJson(res, 400, { error: "Supabase rechazó la contraseña. Usa una contraseña más segura de al menos 12 caracteres." });
-    }
-    if (/already registered|already exists|email_exists|user_already_exists/.test(providerError)) {
-      return sendJson(res, 409, {
-        error: "Ese correo ya tiene una cuenta. Inicia sesión o contacta al administrador para revisar el registro."
-      });
-    }
-    if (/signup.*disabled|signups not allowed/.test(providerError)) {
-      return sendJson(res, 503, { error: "La creación de cuentas está desactivada en Supabase. Contacta al administrador." });
-    }
-    return sendJson(res, response.ok ? 502 : response.status, {
-      error: "Supabase no pudo crear la cuenta. Verifica el correo y la contraseña e inténtalo de nuevo."
+  const authUser = authResult && authResult.user ? authResult.user : authResult;
+  if (!authResponse.ok || !authUser || !authUser.id) {
+    const providerMessage = `${authResult && (authResult.msg || authResult.message || authResult.error_description || authResult.error) || ""}`.toLowerCase();
+    console.error("Supabase admin user creation failed.", {
+      status: authResponse.status,
+      code: authResult && (authResult.code || authResult.error_code) || "unknown"
     });
+    if (/already registered|already exists|email_exists|user_already_exists/.test(providerMessage)) {
+      return sendJson(res, 409, { error: "Supabase ya tiene una cuenta anterior con ese correo. El administrador debe revisar Authentication → Users y, si es una cuenta pendiente que ya no se usa, eliminarla antes de generar otro código." });
+    }
+    if (/password|weak/.test(providerMessage)) {
+      return sendJson(res, 400, { error: "Supabase rechazó la contraseña. Elige otra contraseña más segura y pide un código nuevo al administrador." });
+    }
+    return sendJson(res, 502, { error: "Supabase no pudo activar la cuenta. Pide al administrador que genere un código nuevo e inténtalo otra vez." });
   }
   try {
     await supabase("/rest/v1/worker_users", {
       method: "POST",
       headers: { Prefer: "resolution=ignore-duplicates,return=minimal" },
-      body: JSON.stringify({ user_id: authResult.user.id, email, name: application.name || "" })
+      body: JSON.stringify({ user_id: authUser.id, email, name: application.name || "" })
     });
   } catch (error) {
-    console.error("No se pudo vincular la cuenta creada con worker_users.", error.message);
+    console.error("No se pudo vincular la cuenta activada con worker_users.", error.message);
     try {
-      await removeUnconfirmedWorkerAccount(authResult.user.id);
+      const cleanupResponse = await fetch(`${getEnv("SUPABASE_URL").replace(/\/+$/, "")}/auth/v1/admin/users/${encodeURIComponent(authUser.id)}`, {
+        method: "DELETE",
+        headers: { apikey: serviceRoleKey, Authorization: `******` }
+      });
+      if (!cleanupResponse.ok && cleanupResponse.status !== 404) {
+        console.error("No se pudo limpiar la cuenta de Auth incompleta.", cleanupResponse.status);
+      }
     } catch (cleanupError) {
-      console.error("No se pudo limpiar la cuenta tras fallar su registro interno.", cleanupError.message);
+      console.error("No se pudo limpiar la cuenta de Auth incompleta.", cleanupError.message);
     }
-    return sendJson(res, 503, {
-      error: "Supabase creó la cuenta, pero no se pudo completar su registro de trabajador. Inténtalo de nuevo."
-    });
+    return sendJson(res, 503, { error: "No se pudo completar la activación del trabajador. Pide al administrador que genere un código nuevo." });
   }
   try {
     await writeActivity(
-      { id: authResult.user.id, email, user_metadata: { full_name: application.name || "" } },
-      "worker_registration",
-      "Creó su cuenta de trabajador"
+      { id: authUser.id, email, user_metadata: { full_name: application.name || "" } },
+      "worker_activation",
+      "Activó su cuenta de trabajador"
     );
   } catch (error) {
-    console.error("No se pudo registrar la actividad de creación de cuenta.", error.message);
+    console.error("No se pudo registrar la actividad de activación de cuenta.", error.message);
   }
   return sendJson(res, 201, {
     ok: true,
-    confirmationRequired: !authResult.session,
-    message: authResult.session
-      ? "Cuenta creada. Ya puedes iniciar sesión."
-      : "Cuenta creada. Confirma tu correo desde el mensaje de Supabase y luego inicia sesión."
+    message: "Acceso activado. Ahora inicia sesión con tu correo y la contraseña que acabas de elegir."
   });
 }
 
@@ -334,9 +248,11 @@ module.exports = async function handler(req, res) {
     if (!email || typeof payload.password !== "string" || !payload.password) {
       return sendJson(res, 400, { error: "Escribe el correo y la contraseña de tu cuenta." });
     }
-    if (payload.action === "register") return await register(email, payload.password, res);
+    if (payload.action === "activate_worker") {
+      return await activateWorker(email, payload.code, payload.password, res);
+    }
     if (payload.action !== "login") {
-      return sendJson(res, 400, { error: "Selecciona iniciar sesión o crear cuenta." });
+      return sendJson(res, 400, { error: "Selecciona iniciar sesión o activar tu acceso." });
     }
     return await login(email, payload.password, res);
   } catch (error) {
@@ -344,10 +260,13 @@ module.exports = async function handler(req, res) {
     const databaseMessage = `${error.message || ""} ${details.message || ""} ${details.details || ""}`.toLowerCase();
     if (
       ["PGRST202", "PGRST204", "PGRST205", "42P01", "42703"].includes(details.code)
-      && ["worker_applications", "worker_users", "worker_roles", "activity_events"].some(table => databaseMessage.includes(table))
+      && (
+        ["worker_applications", "worker_users", "worker_roles", "activity_events"].some(table => databaseMessage.includes(table))
+        || databaseMessage.includes("consume_worker_activation_code")
+      )
     ) {
       return sendJson(res, 503, {
-        error: "Falta actualizar las tablas de trabajadores en Supabase. Ejecuta el archivo supabase/schema.sql completo y vuelve a intentarlo."
+        error: "Falta actualizar el esquema de trabajadores en Supabase. Ejecuta el archivo supabase/schema.sql actualizado completo y vuelve a intentarlo."
       });
     }
     return publicError(error, res);

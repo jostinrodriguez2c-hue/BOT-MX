@@ -70,6 +70,9 @@ alter table public.worker_applications add column if not exists department text 
 alter table public.worker_applications add column if not exists position text not null default '';
 alter table public.worker_applications add column if not exists company text not null default '';
 alter table public.worker_applications add column if not exists role_id uuid references public.worker_roles(id) on delete set null;
+alter table public.worker_applications add column if not exists activation_code_hash text;
+alter table public.worker_applications add column if not exists activation_code_expires_at timestamptz;
+alter table public.worker_applications add column if not exists activation_code_attempts integer not null default 0;
 insert into public.organization_catalogs (kind, name)
 select 'department', trim(department)
 from public.worker_applications
@@ -236,6 +239,44 @@ revoke all on public.products, public.product_categories, public.admin_users, pu
 grant all on public.products, public.product_categories, public.admin_users, public.organization_catalogs, public.worker_roles,
   public.worker_applications, public.worker_users, public.worker_signup_attempts, public.worker_warnings, public.activity_events, public.notification_reads, public.purchase_orders, public.purchase_rate_limits
   to service_role;
+
+create or replace function public.consume_worker_activation_code(p_email text, p_code_hash text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  claimed_count integer;
+begin
+  update public.worker_applications
+  set activation_code_hash = null,
+      activation_code_expires_at = null,
+      activation_code_attempts = 0
+  where email = lower(trim(p_email))
+    and status = 'approved'
+    and activation_code_hash = p_code_hash
+    and activation_code_expires_at > now()
+    and activation_code_attempts < 5;
+
+  get diagnostics claimed_count = row_count;
+  if claimed_count = 1 then
+    return true;
+  end if;
+
+  update public.worker_applications
+  set activation_code_attempts = activation_code_attempts + 1
+  where email = lower(trim(p_email))
+    and status = 'approved'
+    and activation_code_hash is not null
+    and activation_code_expires_at > now()
+    and activation_code_attempts < 5;
+  return false;
+end;
+$$;
+
+revoke all on function public.consume_worker_activation_code(text, text) from public, anon, authenticated;
+grant execute on function public.consume_worker_activation_code(text, text) to service_role;
 
 create or replace function public.create_purchase_request(
   p_product_id uuid,

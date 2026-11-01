@@ -529,7 +529,7 @@
     .worker-access-grid .generic-form > p, .worker-access-grid .generic-form > button, .worker-access-grid details { grid-column: 1 / -1; }
     .worker-access-grid details { padding: .8rem; border: 1px solid #2c3b59; border-radius: 12px; background: #172338; }
     .worker-access-grid summary { color: #dce5f8; font-weight: 700; cursor: pointer; }
-    .worker-register-form { grid-template-columns: 1fr; margin-bottom: 0; padding: .8rem 0 0; border: 0; background: transparent; box-shadow: none; }
+    .worker-activation-form { grid-template-columns: 1fr; margin-bottom: 0; padding: .8rem 0 0; border: 0; background: transparent; box-shadow: none; }
     .entry-back { margin-top: 1rem; }
     .worker-requests-list { display: grid; gap: .65rem; max-height: 55vh; overflow-y: auto; }
     .worker-request-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .8rem; border: 1px solid #34425d; border-radius: 11px; background: #172338; }
@@ -675,7 +675,7 @@
         </section>
         <section id="workerAccess" hidden>
           <h1>Acceso</h1>
-          <p>Inicia sesión con una cuenta aprobada o solicita acceso de trabajador.</p>
+          <p>Inicia sesión con una cuenta aprobada o solicita acceso de trabajador. Tras la aprobación, el administrador te entregará un código temporal para activar tu acceso.</p>
           <div class="worker-access-grid">
             <form class="generic-form" id="workerLoginForm">
               <h2>Iniciar sesión</h2>
@@ -693,15 +693,15 @@
               <p class="status-message" id="workerApplicationStatus" role="status"></p>
               <button class="button button-secondary" type="submit">Enviar solicitud</button>
             </form>
-            <details class="worker-register-details">
-              <summary>¿Ya te aprobaron? Crear tu cuenta</summary>
-              <form id="workerRegisterForm" class="generic-form worker-register-form">
+            <details class="worker-activation-details">
+              <summary>¿Tienes un código? Activar acceso</summary>
+              <form id="workerActivationForm" class="generic-form worker-activation-form">
                 <label>Correo aprobado<input name="email" type="email" autocomplete="email" required></label>
+                <label>Código temporal<input name="code" type="text" minlength="16" maxlength="16" pattern="[a-fA-F0-9]{16}" autocomplete="one-time-code" required></label>
                 <label>Crea tu contraseña<input name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
-                <small>Debe tener al menos 12 caracteres. La contraseña la eliges tú y no se comparte con el administrador.</small>
-                <small>Una vez aprobada tu solicitud, puedes intentar crear tu cuenta cuando quieras. Si ya confirmaste una cuenta con ese correo, inicia sesión.</small>
-                <p class="status-message" id="workerRegisterStatus" role="status"></p>
-                <button class="button button-primary" type="submit">Crear cuenta de trabajador</button>
+                <small>El código lo entrega personalmente el administrador que aprobó tu solicitud. Vence en 24 horas y solo se puede usar una vez. Tu contraseña debe tener al menos 12 caracteres.</small>
+                <p class="status-message" id="workerActivationStatus" role="status"></p>
+                <button class="button button-primary" type="submit">Activar acceso</button>
               </form>
             </details>
           </div>
@@ -1306,7 +1306,7 @@
       <div class="dialog-top">
         <div>
           <h2 id="workerRequestsTitle">Solicitudes de trabajador</h2>
-          <p class="dialog-subtitle">Aprueba o rechaza solicitudes por correo. Las contraseñas nunca se solicitan ni se muestran.</p>
+          <p class="dialog-subtitle">Aprueba solicitudes y entrega personalmente el código temporal que se muestra una sola vez. No envíes contraseñas.</p>
         </div>
         <button class="icon-button" type="button" data-close="workerRequestsDialog" aria-label="Cerrar">×</button>
       </div>
@@ -1386,10 +1386,10 @@
       workerAccess: document.querySelector("#workerAccess"),
       workerLoginForm: document.querySelector("#workerLoginForm"),
       workerApplicationForm: document.querySelector("#workerApplicationForm"),
-      workerRegisterForm: document.querySelector("#workerRegisterForm"),
+      workerActivationForm: document.querySelector("#workerActivationForm"),
       workerLoginStatus: document.querySelector("#workerLoginStatus"),
       workerApplicationStatus: document.querySelector("#workerApplicationStatus"),
-      workerRegisterStatus: document.querySelector("#workerRegisterStatus"),
+      workerActivationStatus: document.querySelector("#workerActivationStatus"),
       workerRequestsList: document.querySelector("#workerRequestsList"),
       workerRequestsStatus: document.querySelector("#workerRequestsStatus"),
       refreshWorkerRequestsButton: document.querySelector("#refreshWorkerRequestsButton"),
@@ -1717,7 +1717,7 @@
         status.textContent = request.status === "pending"
           ? "Pendiente"
           : request.status === "approved"
-            ? "Aprobada"
+            ? request.accountCreated ? "Aprobada · cuenta activada" : "Aprobada · falta activar"
             : request.status === "terminated" ? "Despedida" : "Rechazada";
         identity.append(document.createElement("br"), status);
         row.append(identity);
@@ -1735,6 +1735,16 @@
             button.addEventListener("click", () => reviewWorkerRequest(request.email, action));
             actions.append(button);
           }
+          row.append(actions);
+        } else if (request.status === "approved" && !request.accountCreated) {
+          const actions = document.createElement("div");
+          actions.className = "worker-request-actions";
+          const button = document.createElement("button");
+          button.className = "button button-secondary button-small";
+          button.type = "button";
+          button.textContent = "Generar código temporal";
+          button.addEventListener("click", () => reviewWorkerRequest(request.email, "issue_activation_code"));
+          actions.append(button);
           row.append(actions);
         }
         elements.workerRequestsList.append(row);
@@ -1761,13 +1771,21 @@
       const buttons = [...elements.workerRequestsList.querySelectorAll("button")];
       buttons.forEach(button => { button.disabled = true; });
       try {
-        await apiRequest("/api/worker-requests", {
+        const result = await apiRequest("/api/worker-requests", {
           method: "PATCH",
           body: { email, action },
           admin: true
         });
         await loadWorkerRequests();
-        setStatus(elements.workerRequestsStatus, action === "approve" ? "Solicitud aceptada." : "Solicitud rechazada.", "success");
+        if (result.activationCode) {
+          setStatus(
+            elements.workerRequestsStatus,
+            `Código temporal para entregar personalmente (vence en 24 horas, un uso): ${result.activationCode}`,
+            "success"
+          );
+        } else {
+          setStatus(elements.workerRequestsStatus, action === "approve" ? "Solicitud aceptada." : "Solicitud rechazada.", "success");
+        }
         if (action === "approve" && activeAdminModule === "people") {
           await loadAdminWorkers({
             statusId: "adminPeopleAssignmentsStatus",
@@ -3636,7 +3654,7 @@
       const email = button.dataset.workerEmail;
       if (action === "dismiss" && !await confirmAction({
         title: "¿Despedir a este trabajador?",
-        message: "Se revocará su acceso y se eliminará su cuenta actual. Si vuelve a solicitar acceso con el mismo correo y se aprueba, podrá crear una cuenta nueva.",
+        message: "Se revocará su acceso y se eliminará su cuenta actual. Si vuelve a solicitar acceso con el mismo correo y se aprueba, el administrador deberá entregarle un nuevo código de activación.",
         detail: email,
         kicker: "Acción de personal",
         confirmLabel: "Sí, despedir",
@@ -3673,7 +3691,7 @@
           setStatus(currentStatus, action === "warn"
             ? "Advertencia registrada."
             : action === "dismiss"
-              ? "Acceso revocado y cuenta anterior eliminada. Si vuelve a solicitar acceso con el mismo correo y se aprueba, podrá crear una cuenta nueva."
+              ? "Acceso revocado y cuenta anterior eliminada. Si vuelve a solicitar acceso con el mismo correo y se aprueba, el administrador deberá entregarle un nuevo código de activación."
               : result.message || "Acción completada.", "success");
         }
       } catch (error) {
@@ -4944,25 +4962,26 @@
       }
     });
 
-    elements.workerRegisterForm.addEventListener("submit", async event => {
+    elements.workerActivationForm.addEventListener("submit", async event => {
       event.preventDefault();
-      const formData = new FormData(elements.workerRegisterForm);
-      const submitButton = elements.workerRegisterForm.querySelector('button[type="submit"]');
+      const formData = new FormData(elements.workerActivationForm);
+      const submitButton = elements.workerActivationForm.querySelector('button[type="submit"]');
       submitButton.disabled = true;
-      setStatus(elements.workerRegisterStatus, "Creando cuenta…", "");
+      setStatus(elements.workerActivationStatus, "Activando acceso…", "");
       try {
         const result = await apiRequest("/api/auth", {
           method: "POST",
           body: {
-            action: "register",
+            action: "activate_worker",
             email: String(formData.get("email") || "").trim(),
+            code: String(formData.get("code") || "").trim(),
             password: String(formData.get("password") || "")
           }
         });
-        elements.workerRegisterForm.reset();
-        setStatus(elements.workerRegisterStatus, result.message || "Cuenta creada correctamente.", "success");
+        elements.workerActivationForm.reset();
+        setStatus(elements.workerActivationStatus, result.message || "Acceso activado. Ya puedes iniciar sesión.", "success");
       } catch (error) {
-        setStatus(elements.workerRegisterStatus, error.message, "error");
+        setStatus(elements.workerActivationStatus, error.message, "error");
       } finally {
         submitButton.disabled = false;
       }

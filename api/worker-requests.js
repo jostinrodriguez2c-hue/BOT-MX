@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const {
   body,
   getEnv,
@@ -26,6 +27,27 @@ function normalizePermissions(value) {
 
 function normalizeEmail(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+async function issueWorkerActivationCode(email) {
+  const code = crypto.randomBytes(8).toString("hex");
+  const codeHash = crypto.createHmac("sha256", getEnv("SUPABASE_SERVICE_ROLE_KEY"))
+    .update(code)
+    .digest("hex");
+  const rows = await supabase(
+    `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.approved`,
+    {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        activation_code_hash: codeHash,
+        activation_code_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        activation_code_attempts: 0
+      })
+    }
+  );
+  if (!rows.length) throw new Error("La solicitud ya no está aprobada; no se pudo generar el código.");
+  return code;
 }
 
 async function deleteWorkerAuthAccount(email) {
@@ -86,10 +108,19 @@ module.exports = async function handler(req, res) {
       }
       if (req.query && req.query.view === "requests") {
         await requireWorkerPermission(req, "applications_review");
-        const requests = await supabase(
+        const [requests, accounts] = await Promise.all([
+          supabase(
           "/rest/v1/worker_applications?select=email,name,status,created_at,reviewed_at&order=created_at.desc"
-        );
-        return sendJson(res, 200, { requests });
+          ),
+          supabase("/rest/v1/worker_users?select=email")
+        ]);
+        const accountEmails = new Set(accounts.map(account => account.email));
+        return sendJson(res, 200, {
+          requests: requests.map(request => ({
+            ...request,
+            accountCreated: accountEmails.has(request.email)
+          }))
+        });
       }
       if (req.query && req.query.view === "catalogs") {
         await requireWorkerPermission(req, "catalog_manage");
@@ -169,7 +200,7 @@ module.exports = async function handler(req, res) {
         `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&select=status&limit=1`
       );
       if (existing && existing.status === "approved") {
-        return sendJson(res, 409, { error: "Esta solicitud ya fue aprobada. Crea tu cuenta en la sección Trabajador." });
+        return sendJson(res, 409, { error: "Esta solicitud ya fue aprobada. Pide el código temporal al administrador para activar el acceso." });
       }
       if (existing && existing.status === "terminated") {
         try {
@@ -194,7 +225,7 @@ module.exports = async function handler(req, res) {
         });
         return sendJson(res, 200, {
           ok: true,
-          message: "Nueva solicitud enviada. Cuando el administrador la apruebe, podrás crear una cuenta nueva con este correo."
+          message: "Nueva solicitud enviada. Si la aprueban, el administrador te entregará un código temporal para activar el acceso."
         });
       }
       if (existing && existing.status === "pending") {
@@ -299,7 +330,7 @@ module.exports = async function handler(req, res) {
       });
       return sendJson(res, 200, { role: rows[0] });
     }
-    if (!["approve", "reject", "warn", "dismiss", "update_profile", "reset_password"].includes(action)) {
+    if (!["approve", "reject", "warn", "dismiss", "update_profile", "reset_password", "issue_activation_code"].includes(action)) {
       return sendJson(res, 400, { error: "Selecciona una acción válida para la solicitud." });
     }
     const email = normalizeEmail(payload.email);
@@ -391,6 +422,23 @@ module.exports = async function handler(req, res) {
         message: "Se envió un enlace de restablecimiento al correo del trabajador."
       });
     }
+    if (action === "issue_activation_code") {
+      if (request.status !== "approved") {
+        return sendJson(res, 409, { error: "Solo se puede generar un código para una solicitud aprobada." });
+      }
+      const [account] = await supabase(
+        `/rest/v1/worker_users?email=eq.${encodeURIComponent(email)}&select=user_id&limit=1`
+      );
+      if (account) {
+        return sendJson(res, 409, { error: "Este trabajador ya activó su cuenta; debe iniciar sesión o restablecer su contraseña." });
+      }
+      const activationCode = await issueWorkerActivationCode(email);
+      return sendJson(res, 200, {
+        ok: true,
+        activationCode,
+        message: "Código temporal generado. Entrégalo personalmente al trabajador; vence en 24 horas y solo se usa una vez."
+      });
+    }
     if (action === "warn" || action === "dismiss") {
       if (request.status !== "approved") {
         return sendJson(res, 409, { error: "Solo se pueden administrar trabajadores aprobados." });
@@ -420,7 +468,10 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({
           status: "terminated",
           reviewed_at: new Date().toISOString(),
-          reviewed_by: admin.id
+          reviewed_by: admin.id,
+          activation_code_hash: null,
+          activation_code_expires_at: null,
+          activation_code_attempts: 0
         })
       });
       if (!dismissed.length) return sendJson(res, 409, { error: "El trabajador ya no está activo." });
@@ -442,6 +493,10 @@ module.exports = async function handler(req, res) {
     if (action === "approve" && !approvalRole) {
       return sendJson(res, 503, { error: "Falta el rol predeterminado Trabajador. Ejecuta supabase/schema.sql completo." });
     }
+    const activationCode = action === "approve" ? crypto.randomBytes(8).toString("hex") : null;
+    const activationCodeHash = activationCode
+      ? crypto.createHmac("sha256", getEnv("SUPABASE_SERVICE_ROLE_KEY")).update(activationCode).digest("hex")
+      : null;
     const rows = await supabase(`/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&select=email,status`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
@@ -449,7 +504,10 @@ module.exports = async function handler(req, res) {
         status: action === "approve" ? "approved" : "rejected",
         reviewed_at: new Date().toISOString(),
         reviewed_by: admin.id,
-        ...(approvalRole ? { role_id: approvalRole.id } : {})
+        ...(approvalRole ? { role_id: approvalRole.id } : {}),
+        activation_code_hash: activationCodeHash,
+        activation_code_expires_at: activationCode ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null,
+        activation_code_attempts: 0
       })
     });
     if (!rows.length) return sendJson(res, 404, { error: "No se encontró la solicitud." });
@@ -459,7 +517,11 @@ module.exports = async function handler(req, res) {
       action === "approve" ? "Aprobó a un trabajador" : "Rechazó una solicitud de trabajador",
       { email, name: request.name || "" }
     );
-    return sendJson(res, 200, { ok: true, status: rows[0].status });
+    return sendJson(res, 200, {
+      ok: true,
+      status: rows[0].status,
+      ...(activationCode ? { activationCode } : {})
+    });
   } catch (error) {
     const details = error.details && typeof error.details === "object" ? error.details : {};
     const databaseMessage = `${error.message || ""} ${details.message || ""} ${details.details || ""}`.toLowerCase();
