@@ -1583,6 +1583,7 @@
     let notificationUnreadCount = 0;
     let applicationDecisionNotification = null;
     let pendingWorkerRequestCount = 0;
+    let pendingWorkerRequestCountRefreshing = false;
     let notificationIdentity = "visitor";
     let demoSuggestions = [];
     const hasInventoryAccess = () => isAdmin || isWorker;
@@ -1780,12 +1781,18 @@
     }
 
     async function refreshPendingWorkerRequestCount() {
-      if (!REMOTE_INVENTORY_ENABLED || !isAdmin) return;
-      const result = await apiRequest("/api/worker-requests?view=requests", { admin: true });
-      if (!Array.isArray(result.requests)) {
-        throw new Error("El servidor devolvió una lista de solicitudes no válida.");
+      if (!REMOTE_INVENTORY_ENABLED || !isAdmin || pendingWorkerRequestCountRefreshing) return;
+      pendingWorkerRequestCountRefreshing = true;
+      try {
+        const result = await apiRequest("/api/worker-requests?view=requests", { admin: true });
+        if (!Array.isArray(result.requests)) {
+          throw new Error("El servidor devolvió una lista de solicitudes no válida.");
+        }
+        updatePendingWorkerRequestCount(result.requests.length);
+        if (elements.workerRequestsDialog.open) renderWorkerRequests(result.requests);
+      } finally {
+        pendingWorkerRequestCountRefreshing = false;
       }
-      updatePendingWorkerRequestCount(result.requests.length);
     }
 
     async function loadWorkerRequests() {
@@ -3708,30 +3715,33 @@
         const email = document.createElement("span");
         email.textContent = worker.email || "";
         details.append(name, email);
+        const activationCodeRow = document.createElement("div");
+        activationCodeRow.className = "worker-activation-code-row";
+        const activationCode = document.createElement("small");
+        if (worker.accountCreated) {
+          activationCode.textContent = "Cuenta activada; no requiere código temporal.";
+        } else if (worker.activationCode) {
+          const expiry = new Date(worker.activation_code_expires_at);
+          activationCode.textContent = `Código temporal: ${worker.activationCode} · vence ${new Intl.DateTimeFormat("es-PA", {
+            dateStyle: "short",
+            timeStyle: "short",
+            timeZone: "America/Panama"
+          }).format(expiry)}`;
+        } else {
+          activationCode.textContent = "Sin código temporal activo.";
+        }
+        activationCodeRow.append(activationCode);
+        if (!worker.accountCreated) {
+          const issueCode = document.createElement("button");
+          issueCode.type = "button";
+          issueCode.className = "button button-secondary button-small";
+          issueCode.textContent = "Dar otro código";
+          issueCode.dataset.workerAction = "issue_activation_code";
+          issueCode.dataset.workerEmail = worker.email;
+          activationCodeRow.append(issueCode);
+        }
+        details.append(activationCodeRow);
         if (assignmentOnly) {
-          if (!worker.accountCreated) {
-            const activationCodeRow = document.createElement("div");
-            activationCodeRow.className = "worker-activation-code-row";
-            const activationCode = document.createElement("small");
-            if (worker.activationCode) {
-              const expiry = new Date(worker.activation_code_expires_at);
-              activationCode.textContent = `Código temporal: ${worker.activationCode} · vence ${new Intl.DateTimeFormat("es-PA", {
-                dateStyle: "short",
-                timeStyle: "short",
-                timeZone: "America/Panama"
-              }).format(expiry)}`;
-            } else {
-              activationCode.textContent = "Sin código temporal activo.";
-            }
-            const issueCode = document.createElement("button");
-            issueCode.type = "button";
-            issueCode.className = "button button-secondary button-small";
-            issueCode.textContent = "Dar otro código";
-            issueCode.dataset.workerAction = "issue_activation_code";
-            issueCode.dataset.workerEmail = worker.email;
-            activationCodeRow.append(activationCode, issueCode);
-            details.append(activationCodeRow);
-          }
           const assignmentActions = document.createElement("div");
           assignmentActions.className = "approved-worker-actions";
           assignmentActions.append(
@@ -3900,6 +3910,10 @@
           admin: true,
           body: { email, action, message }
         });
+        if (action === "issue_activation_code" && typeof result.activationCode === "string") {
+          const codeLabel = row.querySelector(".worker-activation-code-row small");
+          if (codeLabel) codeLabel.textContent = `Código temporal: ${result.activationCode} · vence en 24 horas.`;
+        }
         adminWorkersLoaded = false;
         const status = document.getElementById(workersSection.id.replace(/List$/, "Status"));
         const isAssignmentList = workersSection.id === "adminPeopleAssignmentsList";
@@ -5216,6 +5230,9 @@
         }
         setStatus(elements.workerApplicationStatus, result.message || "Solicitud enviada para revisión.", "success");
         elements.workerApplicationForm.reset();
+        refreshPendingWorkerRequestCount().catch(error =>
+          console.error("No se pudo actualizar el contador de solicitudes pendientes.", error)
+        );
         refreshNotifications().catch(error =>
           console.error("No se pudieron actualizar las notificaciones de la solicitud.", error)
         );
@@ -5937,6 +5954,13 @@
       document.addEventListener(eventName, recordAuthActivity, { passive: true });
     }
     document.addEventListener("visibilitychange", checkAuthSessionOnVisibilityChange);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        refreshPendingWorkerRequestCount().catch(error =>
+          console.error("No se pudo actualizar el contador de solicitudes pendientes.", error)
+        );
+      }
+    });
     (async () => {
       await restorePageSession();
       render();
@@ -5967,10 +5991,13 @@
     window.setInterval(() => {
       refreshNotifications(elements.notificationsDialog.open)
         .catch(error => console.error("No se pudieron actualizar las notificaciones.", error));
+    }, 30000);
+    window.setInterval(() => {
+      if (document.hidden) return;
       refreshPendingWorkerRequestCount().catch(error =>
         console.error("No se pudo actualizar el contador de solicitudes pendientes.", error)
       );
-    }, 30000);
+    }, 3000);
     if (/^[0-9a-f-]{36}$/i.test(PAYMENT_RETURN_ORDER_ID || "")) {
       history.replaceState(null, "", location.pathname);
       if (hasInventoryAccess()) updatePurchaseReturnStatus(PAYMENT_RETURN_ORDER_ID);

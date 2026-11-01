@@ -521,6 +521,7 @@ module.exports = async function handler(req, res) {
       const activationCode = await issueWorkerActivationCode(email);
       return sendJson(res, 200, {
         ok: true,
+        activationCode,
         message: "Código temporal generado. Está visible en Datos laborales de Personas; vence en 24 horas y solo se usa una vez."
       });
     }
