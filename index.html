@@ -623,6 +623,7 @@
   <header class="topbar">
     <div class="brand"><span class="brand-mark" aria-hidden="true">W</span><span>Wilcox Company</span></div>
     <div class="topbar-actions">
+      <button class="button button-secondary" id="openAdminPanelButton" type="button" hidden>Abrir panel</button>
       <button class="button button-primary" id="manageAllButton" type="button" hidden>Administrar todo</button>
       <button class="button button-secondary" id="workerRequestsButton" type="button" hidden>Ver solicitudes</button>
       <button class="button button-secondary notification-button" id="notificationButton" type="button" aria-label="Notificaciones" aria-haspopup="dialog">
@@ -1380,6 +1381,7 @@
       localAdminLoginForm: document.querySelector("#localAdminLoginForm"),
       localAdminCode: document.querySelector("#localAdminCode"),
       localAdminStatus: document.querySelector("#localAdminStatus"),
+      openAdminPanelButton: document.querySelector("#openAdminPanelButton"),
       manageAllButton: document.querySelector("#manageAllButton"),
       workerRequestsButton: document.querySelector("#workerRequestsButton"),
       entryModeChooser: document.querySelector("#entryModeChooser"),
@@ -2600,6 +2602,7 @@
       }
 
       elements.manageAllButton.hidden = !isAdmin;
+      elements.openAdminPanelButton.hidden = !isAdmin;
       elements.workerRequestsButton.hidden = !isAdmin;
       elements.ownerQuickNav.hidden = !isAdmin;
       elements.adminRouteButton.hidden = true;
@@ -5105,6 +5108,16 @@
     elements.manageAllButton.addEventListener("click", () => {
       if (!isAdmin) return;
       setRoute("admin");
+    });
+
+    elements.openAdminPanelButton.addEventListener("click", () => {
+      if (!isAdmin) return;
+      activeRoute = "home";
+      activeAdminSection = null;
+      editingPersonId = null;
+      isAdminPanelOpen = true;
+      render();
+      elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     elements.adminBackButton.addEventListener("click", () => {
