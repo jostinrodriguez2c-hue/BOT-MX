@@ -1371,6 +1371,8 @@
     const PORTAL_STORAGE_KEY = "portal-institucional-demo-v1";
     const ACTIVITY_STORAGE_KEY = "portal-institucional-activity-v1";
     const PERSONAL_NOTIFICATION_STORAGE_KEY = "wilcox-personal-notifications-v1";
+    const APPLICATION_NOTIFICATION_TOKEN_KEY = "wilcox-application-notification-token-v1";
+    const APPLICATION_NOTIFICATION_SEEN_KEY = "wilcox-application-notification-seen-v1";
     const PAGE_SESSION_KEY = "wilcox-page-session-v1";
     const AUTH_SESSION_KEY = "wilcox-auth-session-v1";
     const AUTH_SESSION_DURATION_MS = 30 * 60 * 1000;
@@ -1540,6 +1542,8 @@
     let workerAccessToken = null;
     let authSessionExpiresAt = null;
     let authSessionExpiryTimer = null;
+    let lastAuthActivityPersistAt = 0;
+    let lastAuthPointerActivityAt = 0;
     let entryMode = "choose";
     let isAdminPanelOpen = false;
     let pendingPublishId = null;
@@ -1575,6 +1579,7 @@
     let activityLog = loadActivityLog();
     let notificationEvents = [];
     let notificationUnreadCount = 0;
+    let applicationDecisionNotification = null;
     let pendingWorkerRequestCount = 0;
     let notificationIdentity = "visitor";
     let demoSuggestions = [];
@@ -1811,12 +1816,13 @@
           admin: true
         });
         await loadWorkerRequests();
+        const decisionMessage = action === "approve"
+          ? "Solicitud aprobada. El código temporal está disponible en Personas hasta que venza o la cuenta se active."
+          : "Solicitud rechazada.";
         setStatus(
-          elements.workerRequestsStatus,
-          action === "approve"
-            ? "Solicitud aprobada. El código temporal está disponible en Personas hasta que venza o la cuenta se active."
-            : "Solicitud rechazada.",
-          "success"
+        elements.workerRequestsStatus,
+        decisionMessage,
+        "success"
         );
         if (action === "approve" && activeAdminModule === "people") {
           await loadAdminWorkers({
@@ -2208,6 +2214,9 @@
         return `${purchaseSummary} ${quantityLabel} de ${productName} por ${formatUsd(amount)}. Compra simulada, sin cobro.`;
       }
       if (event.event_type === "worker_warning") return `Motivo: ${details.message || "Sin detalle"}`;
+      if (event.event_type === "worker_application_decision" && details.message) {
+        return String(details.message);
+      }
       if (details.detail) return String(details.detail);
       if (details.email) return `Correo: ${details.email}${details.name ? ` · Nombre: ${details.name}` : ""}`;
       return Object.keys(details).length ? JSON.stringify(details) : "Sin detalles adicionales.";
@@ -2252,6 +2261,40 @@
       elements.notificationBadge.hidden = notificationUnreadCount === 0;
     }
 
+    function createApplicationNotificationToken() {
+      const bytes = new Uint8Array(32);
+      window.crypto.getRandomValues(bytes);
+      return [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function refreshApplicationDecisionNotification() {
+      applicationDecisionNotification = null;
+      if (!REMOTE_INVENTORY_ENABLED || adminAccessToken || workerAccessToken) return;
+      let token = "";
+      try {
+        token = localStorage.getItem(APPLICATION_NOTIFICATION_TOKEN_KEY) || "";
+      } catch (error) {
+        console.error("No se pudo leer el acceso a las notificaciones de la solicitud.", error);
+        return;
+      }
+      if (!/^[a-f0-9]{64}$/i.test(token)) return;
+      const result = await apiRequest("/api/worker-requests", {
+        method: "POST",
+        body: { action: "application_notification", applicationToken: token }
+      });
+      if (result.notification !== null && (!result.notification || typeof result.notification !== "object"
+        || typeof result.notification.id !== "string" || typeof result.notification.summary !== "string")) {
+        throw new Error("El servidor devolvió una notificación de solicitud no válida.");
+      }
+      applicationDecisionNotification = result.notification;
+      if (applicationDecisionNotification) {
+        notificationEvents = notificationEvents.filter(event => event.event_type !== "worker_application_decision");
+        notificationEvents.push(applicationDecisionNotification);
+        const seenId = localStorage.getItem(APPLICATION_NOTIFICATION_SEEN_KEY) || "";
+        if (seenId !== applicationDecisionNotification.id) notificationUnreadCount += 1;
+      }
+    }
+
     async function refreshNotifications(markSeen = false) {
       if (REMOTE_INVENTORY_ENABLED) {
         const result = await apiRequest("/api/notifications", { admin: true });
@@ -2273,6 +2316,7 @@
         notificationEvents = getLocalNotificationEvents();
         notificationUnreadCount = countLocalUnreadNotifications();
       }
+      await refreshApplicationDecisionNotification();
       notificationEvents.sort((left, right) => new Date(right.created_at) - new Date(left.created_at));
       renderNotifications(notificationEvents);
       if (markSeen) {
@@ -2288,6 +2332,14 @@
           } catch (error) {
             console.error("No se pudo guardar el estado de las notificaciones.", error);
             throw new Error("No se pudo guardar cuáles notificaciones ya leíste.");
+          }
+        }
+        if (applicationDecisionNotification) {
+          try {
+            localStorage.setItem(APPLICATION_NOTIFICATION_SEEN_KEY, applicationDecisionNotification.id);
+          } catch (error) {
+            console.error("No se pudo marcar como leída la notificación de la solicitud.", error);
+            throw new Error("No se pudo guardar que ya leíste la notificación de tu solicitud.");
           }
         }
         notificationUnreadCount = 0;
@@ -2430,6 +2482,8 @@
         authSessionExpiryTimer = null;
       }
       authSessionExpiresAt = null;
+      lastAuthActivityPersistAt = 0;
+      lastAuthPointerActivityAt = 0;
       isAdmin = false;
       canManageSupremeRole = false;
       isWorker = false;
@@ -2450,7 +2504,7 @@
       activeInventorySection = "home";
       pageSessionReady = true;
       render();
-      setStatus(elements.workerLoginStatus, "Tu sesión terminó después de 30 minutos. Inicia sesión de nuevo.", "error");
+      setStatus(elements.workerLoginStatus, "Tu sesión se cerró por 30 minutos de inactividad. Inicia sesión de nuevo.", "error");
     }
 
     function scheduleAuthSessionExpiry() {
@@ -2462,6 +2516,28 @@
         return;
       }
       authSessionExpiryTimer = window.setTimeout(expireAuthSession, remaining);
+    }
+
+    function recordAuthActivity(event) {
+      if ((!isAdmin && !isWorker) || !authSessionExpiresAt) return;
+      const now = Date.now();
+      if (event.type === "pointermove" && now - lastAuthPointerActivityAt < 1000) return;
+      if (event.type === "pointermove") lastAuthPointerActivityAt = now;
+      authSessionExpiresAt = now + AUTH_SESSION_DURATION_MS;
+      scheduleAuthSessionExpiry();
+      if (now - lastAuthActivityPersistAt >= 30000) {
+        lastAuthActivityPersistAt = now;
+        persistPageSession();
+      }
+    }
+
+    function checkAuthSessionOnVisibilityChange() {
+      if (document.visibilityState !== "visible" || (!isAdmin && !isWorker) || !authSessionExpiresAt) return;
+      if (authSessionExpiresAt <= Date.now()) {
+        expireAuthSession();
+        return;
+      }
+      scheduleAuthSessionExpiry();
     }
 
     async function restorePageSession() {
@@ -5065,6 +5141,12 @@
           workerPermissions = Array.isArray(session.user.permissions) ? session.user.permissions : [];
           activeRoute = "inventory";
           activeInventorySection = "home";
+          try {
+            localStorage.removeItem(APPLICATION_NOTIFICATION_TOKEN_KEY);
+            localStorage.removeItem(APPLICATION_NOTIFICATION_SEEN_KEY);
+          } catch (error) {
+            console.error("No se pudo limpiar el acceso temporal a notificaciones de solicitud.", error);
+          }
         }
         try {
           if (adminLogin || canUseInventory()) await loadRemoteInventory();
@@ -5108,12 +5190,28 @@
       submitButton.disabled = true;
       setStatus(elements.workerApplicationStatus, "Enviando solicitud…", "");
       try {
+        let applicationToken = "";
+        try {
+          applicationToken = localStorage.getItem(APPLICATION_NOTIFICATION_TOKEN_KEY) || "";
+          if (!/^[a-f0-9]{64}$/i.test(applicationToken)) applicationToken = createApplicationNotificationToken();
+          localStorage.setItem(`${APPLICATION_NOTIFICATION_TOKEN_KEY}-probe`, applicationToken);
+          localStorage.removeItem(`${APPLICATION_NOTIFICATION_TOKEN_KEY}-probe`);
+        } catch (error) {
+          console.error("No se pudo preparar el acceso a las notificaciones de la solicitud.", error);
+          throw new Error("No se pudieron activar las notificaciones en este navegador. Revisa el almacenamiento y vuelve a intentarlo.");
+        }
         const result = await apiRequest("/api/worker-requests", {
           method: "POST",
-          body: { email, name }
+          body: { email, name, applicationToken }
         });
+        if (result.notificationsEnabled !== false) {
+          localStorage.setItem(APPLICATION_NOTIFICATION_TOKEN_KEY, applicationToken);
+        }
         setStatus(elements.workerApplicationStatus, result.message || "Solicitud enviada para revisión.", "success");
         elements.workerApplicationForm.reset();
+        refreshNotifications().catch(error =>
+          console.error("No se pudieron actualizar las notificaciones de la solicitud.", error)
+        );
       } catch (error) {
         setStatus(elements.workerApplicationStatus, error.message, "error");
       } finally {
@@ -5828,6 +5926,10 @@
       }
     }
     window.addEventListener("pagehide", persistPageSession);
+    for (const eventName of ["pointerdown", "pointermove", "keydown", "touchstart", "scroll", "input"]) {
+      document.addEventListener(eventName, recordAuthActivity, { passive: true });
+    }
+    document.addEventListener("visibilitychange", checkAuthSessionOnVisibilityChange);
     (async () => {
       await restorePageSession();
       render();

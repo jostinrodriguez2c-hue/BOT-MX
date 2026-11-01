@@ -88,6 +88,7 @@ alter table public.worker_applications add column if not exists activation_code_
 alter table public.worker_applications add column if not exists activation_code_ciphertext text;
 alter table public.worker_applications add column if not exists activation_code_expires_at timestamptz;
 alter table public.worker_applications add column if not exists activation_code_attempts integer not null default 0;
+alter table public.worker_applications add column if not exists application_notification_token_hash text;
 insert into public.organization_catalogs (kind, name)
 select 'department', trim(department)
 from public.worker_applications
@@ -131,7 +132,8 @@ begin
   set activation_code_hash = null,
       activation_code_ciphertext = null,
       activation_code_expires_at = null,
-      activation_code_attempts = 0
+  activation_code_attempts = 0,
+  application_notification_token_hash = null
   where email = lower(trim(new.email))
     and activation_code_hash is not null;
   return new;

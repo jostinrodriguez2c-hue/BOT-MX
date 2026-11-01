@@ -178,6 +178,37 @@ module.exports = async function handler(req, res) {
     const payload = body(req);
 
     if (req.method === "POST") {
+      if (payload.action === "application_notification") {
+        const token = typeof payload.applicationToken === "string" ? payload.applicationToken : "";
+        if (!/^[a-f0-9]{64}$/i.test(token)) {
+          return sendJson(res, 400, { error: "El acceso a las notificaciones de la solicitud no es válido." });
+        }
+        const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+        const [application] = await supabase(
+          `/rest/v1/worker_applications?application_notification_token_hash=eq.${tokenHash}&select=email,status,reviewed_at&limit=1`
+        );
+        if (!application) {
+          return sendJson(res, 404, { error: "No se encontró una solicitud asociada a estas notificaciones." });
+        }
+        if (!["approved", "rejected"].includes(application.status) || !application.reviewed_at) {
+          return sendJson(res, 200, { notification: null });
+        }
+        const approved = application.status === "approved";
+        return sendJson(res, 200, {
+          notification: {
+            id: `application-decision-${application.email}-${application.reviewed_at}`,
+            event_type: "worker_application_decision",
+            summary: approved ? "Tu solicitud fue aprobada" : "Tu solicitud fue rechazada",
+            details: {
+              message: approved
+                ? "Contacta al administrador para recibir tu código temporal y activar tu cuenta."
+                : "Si tienes preguntas, comunícate con el administrador."
+            },
+            actor_name: "Wilcox Company",
+            created_at: application.reviewed_at
+          }
+        });
+      }
       if (payload.action === "catalog_create") {
         await requireAdmin(req);
         const kind = payload.kind;
@@ -218,8 +249,13 @@ module.exports = async function handler(req, res) {
       if (!name || name.length > 120) {
         return sendJson(res, 400, { error: "Escribe tu nombre (máximo 120 caracteres)." });
       }
+      const applicationToken = typeof payload.applicationToken === "string" ? payload.applicationToken : "";
+      if (!/^[a-f0-9]{64}$/i.test(applicationToken)) {
+        return sendJson(res, 400, { error: "No se pudieron activar las notificaciones de tu solicitud. Recarga la página e inténtalo otra vez." });
+      }
+      const applicationTokenHash = crypto.createHash("sha256").update(applicationToken).digest("hex");
       const [existing] = await supabase(
-        `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&select=status&limit=1`
+        `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&select=status,application_notification_token_hash&limit=1`
       );
       if (existing && existing.status === "approved") {
         return sendJson(res, 409, { error: "Esta solicitud ya fue aprobada. Pide el código temporal al administrador para activar el acceso." });
@@ -236,6 +272,7 @@ module.exports = async function handler(req, res) {
           body: JSON.stringify({
             name,
             status: "pending",
+            application_notification_token_hash: applicationTokenHash,
             created_at: new Date().toISOString(),
             reviewed_at: null,
             reviewed_by: null,
@@ -255,11 +292,18 @@ module.exports = async function handler(req, res) {
         });
       }
       if (existing && existing.status === "pending") {
-        await supabase(`/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ name })
+        const ownsNotificationToken = existing.application_notification_token_hash === applicationTokenHash;
+        if (ownsNotificationToken) {
+          await supabase(`/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name })
+          });
+        }
+        return sendJson(res, 200, {
+          ok: true,
+          notificationsEnabled: ownsNotificationToken,
+          message: "La solicitud ya está pendiente de revisión."
         });
-        return sendJson(res, 200, { ok: true, message: "La solicitud ya está pendiente de revisión." });
       }
       await supabase("/rest/v1/worker_applications", {
         method: "POST",
@@ -268,6 +312,7 @@ module.exports = async function handler(req, res) {
           email,
           name,
           status: "pending",
+          application_notification_token_hash: applicationTokenHash,
           created_at: new Date().toISOString(),
           reviewed_at: null,
           reviewed_by: null
@@ -553,6 +598,23 @@ module.exports = async function handler(req, res) {
       })
     });
     if (!rows.length) return sendJson(res, 404, { error: "No se encontró la solicitud." });
+    const decisionApproved = action === "approve";
+    try {
+      await writeActivity(
+        admin,
+        "worker_application_decision",
+        decisionApproved ? "Tu solicitud fue aprobada" : "Tu solicitud fue rechazada",
+        {
+          message: decisionApproved
+            ? "Contacta al administrador para recibir tu código temporal y activar tu cuenta."
+            : "Si tienes preguntas, comunícate con el administrador."
+        },
+        "worker",
+        email
+      );
+    } catch (error) {
+      console.error("No se pudo crear la notificación de decisión de solicitud.", error.message);
+    }
     await writeActivity(
       admin,
       action === "approve" ? "worker_approval" : "worker_rejection",
