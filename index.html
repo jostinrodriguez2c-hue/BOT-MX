@@ -2603,6 +2603,8 @@
 
       elements.manageAllButton.hidden = !isAdmin;
       elements.openAdminPanelButton.hidden = !isAdmin;
+      elements.openAdminPanelButton.textContent =
+        activeRoute === "home" && isAdminPanelOpen ? "Cerrar panel" : "Abrir panel";
       elements.workerRequestsButton.hidden = !isAdmin;
       elements.ownerQuickNav.hidden = !isAdmin;
       elements.adminRouteButton.hidden = true;
@@ -5112,12 +5114,20 @@
 
     elements.openAdminPanelButton.addEventListener("click", () => {
       if (!isAdmin) return;
-      activeRoute = "home";
-      activeAdminSection = null;
-      editingPersonId = null;
-      isAdminPanelOpen = true;
+      if (activeRoute === "home" && isAdminPanelOpen) {
+        isAdminPanelOpen = false;
+        activeAdminSection = null;
+        editingPersonId = null;
+      } else {
+        activeRoute = "home";
+        activeAdminSection = null;
+        editingPersonId = null;
+        isAdminPanelOpen = true;
+      }
       render();
-      elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (isAdminPanelOpen) {
+        elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     });
 
     elements.adminBackButton.addEventListener("click", () => {
