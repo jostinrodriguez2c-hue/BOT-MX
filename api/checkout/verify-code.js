@@ -42,7 +42,7 @@ module.exports = async function handler(req, res) {
         items: [{
           id: order.product_id,
           title: order.product_name,
-          description: `Compra Wilcox Company: ${order.quantity} ${order.unit}`,
+          description: `Compra encuentralo12: ${order.quantity} ${order.unit}`,
           quantity: 1,
           currency_id: "USD",
           unit_price: order.total_cents / 100

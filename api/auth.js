@@ -96,8 +96,8 @@ async function login(email, password, res) {
 async function activateWorker(email, code, password, res) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254
     || typeof code !== "string" || !/^\d{4}$/.test(code)
-    || typeof password !== "string" || password.length < 5 || password.length > 128) {
-    return sendJson(res, 400, { error: "Escribe un correo válido, el código temporal de 4 dígitos y una contraseña de al menos 5 caracteres." });
+    || typeof password !== "string" || password.length < 6 || password.length > 128) {
+    return sendJson(res, 400, { error: "Escribe un correo válido, el código temporal de 4 dígitos y una contraseña de al menos 6 caracteres." });
   }
   const [application] = await supabase(
     `/rest/v1/worker_applications?email=eq.${encodeURIComponent(email)}&status=eq.approved&select=email,name&limit=1`
@@ -141,28 +141,45 @@ async function activateWorker(email, code, password, res) {
     });
   } catch (error) {
     console.error("No se pudo conectar con Supabase para activar la cuenta.", error.message);
-    return sendJson(res, 502, { error: "No se pudo conectar con Supabase. Pide al administrador que genere un código nuevo y vuelve a intentarlo." });
+    return sendJson(res, 502, { error: "No se pudo conectar con Supabase. El código no se consumió y puedes volver a intentarlo. Si continúa, el administrador debe revisar los registros de Vercel y Supabase; generar otro código no solucionará este error." });
   }
   let authResult;
   try {
     authResult = await authResponse.json();
   } catch {
-    return sendJson(res, 502, { error: "Supabase devolvió una respuesta no válida. Pide al administrador que genere un código nuevo." });
+    console.error("Supabase devolvió una respuesta no válida al crear la cuenta.", { status: authResponse.status });
+    return sendJson(res, 502, { error: "Supabase devolvió una respuesta no válida. El código no se consumió; inténtalo otra vez y, si persiste, pide al administrador que revise los registros de Vercel y Supabase." });
   }
   const authUser = authResult && authResult.user ? authResult.user : authResult;
   if (!authResponse.ok || !authUser || !authUser.id) {
-    const providerMessage = `${authResult && (authResult.msg || authResult.message || authResult.error_description || authResult.error) || ""}`.toLowerCase();
+    const providerMessage = [
+      authResult && authResult.msg,
+      authResult && authResult.message,
+      authResult && authResult.error_description,
+      authResult && authResult.error
+    ].filter(value => typeof value === "string").join(" ").toLowerCase();
+    const rawProviderCode = String(authResult && (authResult.code || authResult.error_code) || "unknown");
+    const providerCode = /^[a-z0-9_]{1,60}$/i.test(rawProviderCode) ? rawProviderCode : "unknown";
     console.error("Supabase admin user creation failed.", {
       status: authResponse.status,
-      code: authResult && (authResult.code || authResult.error_code) || "unknown"
+      code: providerCode
     });
-    if (/already registered|already exists|email_exists|user_already_exists/.test(providerMessage)) {
+    if (/already registered|already exists|email_exists|user_already_exists/.test(`${providerMessage} ${providerCode.toLowerCase()}`)) {
       return sendJson(res, 409, { error: "Supabase ya tiene una cuenta anterior con ese correo. El administrador debe revisar Authentication → Users y, si es una cuenta pendiente que ya no se usa, eliminarla antes de generar otro código." });
     }
-    if (/password|weak/.test(providerMessage)) {
-      return sendJson(res, 400, { error: "Supabase rechazó la contraseña. Elige otra contraseña más segura y pide un código nuevo al administrador." });
+    if (/password|weak/.test(providerMessage) || /password|weak/i.test(providerCode)) {
+      return sendJson(res, 400, { error: "Supabase rechazó la contraseña. Usa una contraseña de al menos 6 caracteres que cumpla la política de Authentication → Settings. El código sigue vigente; no necesitas pedir otro por este error." });
     }
-    return sendJson(res, 502, { error: "Supabase no pudo activar la cuenta. Pide al administrador que genere un código nuevo e inténtalo otra vez." });
+    if (authResponse.status === 401 || authResponse.status === 403) {
+      return sendJson(res, 503, { error: "Supabase rechazó la clave de servicio del servidor. El administrador debe revisar SUPABASE_SERVICE_ROLE_KEY en las variables de Vercel y volver a desplegar. No pidas otro código todavía." });
+    }
+    if (authResponse.status === 429) {
+      return sendJson(res, 429, { error: "Supabase está limitando temporalmente la creación de cuentas. Espera unos minutos e inténtalo de nuevo con el mismo código." });
+    }
+    if (authResponse.status >= 500 || /database error|internal server error/.test(providerMessage)) {
+      return sendJson(res, 502, { error: "Supabase no pudo guardar la cuenta. El código sigue vigente; no solicites otro todavía. El administrador debe revisar los registros de Authentication en Supabase y los registros de la función /api/auth en Vercel." });
+    }
+    return sendJson(res, 502, { error: `Supabase rechazó la creación de la cuenta (HTTP ${authResponse.status}, código ${providerCode}). El código no se consumió. Reinténtalo; si vuelve a fallar, el administrador debe revisar los registros de Authentication en Supabase y la función /api/auth en Vercel.` });
   }
   try {
     await supabase("/rest/v1/worker_users", {

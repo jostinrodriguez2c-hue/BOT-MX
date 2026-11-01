@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#080d18">
-  <title>Wilcox Company</title>
+  <title>encuentralo12</title>
   <style>
     :root {
       color-scheme: light;
@@ -25,12 +25,23 @@
     [hidden] { display: none !important; }
 
     body {
+      position: relative;
+      isolation: isolate;
       margin: 0;
       min-height: 100vh;
       color: var(--ink);
+      background: transparent;
+    }
+
+    body::before {
+      position: fixed;
+      z-index: -1;
+      inset: 0;
       background:
-        radial-gradient(ellipse at 50% -10%, #dce5ff 0, transparent 38rem),
-        linear-gradient(145deg, #f8faff, var(--background));
+        linear-gradient(#080d1875, #080d18a6),
+        url("assets/panama-background.png") center / cover no-repeat;
+      content: "";
+      pointer-events: none;
     }
 
     button, input, textarea { font: inherit; }
@@ -503,7 +514,7 @@
 
     body {
       color: var(--ink);
-      background: radial-gradient(ellipse at 50% -10%, #1b2b4a 0, transparent 38rem), linear-gradient(145deg, #080d18, #0d1422);
+      background: transparent;
     }
     .app-shell { border-color: #202b40; background: #0e1625; box-shadow: 0 28px 80px #0008; }
     .topbar, .site-nav { border-color: #222d42; }
@@ -624,7 +635,7 @@
 <body>
   <div class="app-shell">
   <header class="topbar">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">W</span><span>Wilcox Company</span></div>
+    <div class="brand"><span class="brand-mark" aria-hidden="true">E</span><span>encuentralo12</span></div>
     <div class="topbar-actions">
       <button class="button button-secondary" id="openAdminPanelButton" type="button" hidden>Abrir panel</button>
       <button class="button button-primary" id="manageAllButton" type="button" hidden>Administrar todo</button>
@@ -704,8 +715,8 @@
               <form id="workerActivationForm" class="generic-form worker-activation-form">
                 <label>Correo aprobado<input name="email" type="email" autocomplete="email" required></label>
                 <label>Código temporal<input name="code" type="text" inputmode="numeric" minlength="4" maxlength="4" pattern="[0-9]{4}" autocomplete="one-time-code" required></label>
-                <label>Crea tu contraseña<input name="password" type="password" minlength="5" maxlength="128" autocomplete="new-password" required></label>
-                <small>El código lo entrega personalmente el administrador. Vence en 24 horas y solo se puede usar una vez. Tu contraseña debe tener al menos 5 caracteres.</small>
+                <label>Crea tu contraseña<input name="password" type="password" minlength="6" maxlength="128" autocomplete="new-password" required></label>
+                <small>El código lo entrega personalmente el administrador. Vence en 24 horas y solo se puede usar una vez. Tu contraseña debe tener al menos 6 caracteres y cumplir la política de seguridad de Supabase.</small>
                 <p class="status-message" id="workerActivationStatus" role="status"></p>
                 <button class="button button-primary" type="submit">Activar acceso</button>
               </form>
@@ -1866,7 +1877,7 @@
         const order = await apiRequest(`/api/payment-status?order_id=${encodeURIComponent(orderId)}`);
         const messages = {
           paid: ["Pago confirmado. Tu compra fue registrada y el inventario actualizado.", "success"],
-          paid_review: ["Recibimos el pago, pero la reserva venció. Contacta a Wilcox Company para revisar tu compra.", "error"],
+          paid_review: ["Recibimos el pago, pero la reserva venció. Contacta a encuentralo12 para revisar tu compra.", "error"],
           pending_payment: ["Pago en proceso. Estamos esperando la confirmación segura de Mercado Pago.", ""],
           pending_otp: ["La compra todavía no ha sido confirmada.", "error"],
           expired: ["La reserva venció. Inicia una nueva compra para volver a intentarlo.", "error"],
@@ -2744,7 +2755,7 @@
       populateDirectoryFilters();
       renderPublicPages();
       document.querySelector(".brand > span:last-child").textContent =
-        activeRoute === "home" ? "Personas" : "Wilcox Company";
+        activeRoute === "home" ? "Personas" : "encuentralo12";
       renderAdminModule();
       renderAdminWorkspace();
       const inventoryViewOpen = activeRoute === "inventory";

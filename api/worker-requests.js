@@ -204,7 +204,7 @@ module.exports = async function handler(req, res) {
                 ? "Contacta al administrador para recibir tu código temporal y activar tu cuenta."
                 : "Si tienes preguntas, comunícate con el administrador."
             },
-            actor_name: "Wilcox Company",
+            actor_name: "encuentralo12",
             created_at: application.reviewed_at
           }
         });
