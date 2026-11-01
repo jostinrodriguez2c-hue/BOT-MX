@@ -552,6 +552,7 @@
     .worker-directory-card p, .worker-directory-card small { margin: .25rem 0; color: var(--muted); }
     .notification-button { position: relative; min-width: 42px; padding: .55rem .7rem; font-size: 1.15rem; }
     .notification-badge { position: absolute; top: -.35rem; right: -.35rem; display: grid; min-width: 1.2rem; height: 1.2rem; place-items: center; padding: 0 .25rem; border-radius: 999px; color: #fff; background: #d33b52; font-size: .68rem; font-weight: 750; }
+    .request-count-button { position: relative; }
     .notification-list, .activity-list { display: grid; gap: .6rem; max-height: 60vh; overflow-y: auto; }
     .notification-item, .activity-item { display: grid; gap: .3rem; padding: .8rem; border: 1px solid #34425d; border-radius: 11px; background: #172338; }
     .notification-item time, .activity-item time, .notification-item small, .activity-item small { color: var(--muted); font-size: .78rem; }
@@ -625,7 +626,9 @@
     <div class="topbar-actions">
       <button class="button button-secondary" id="openAdminPanelButton" type="button" hidden>Abrir panel</button>
       <button class="button button-primary" id="manageAllButton" type="button" hidden>Administrar todo</button>
-      <button class="button button-secondary" id="workerRequestsButton" type="button" hidden>Ver solicitudes</button>
+      <button class="button button-secondary request-count-button" id="workerRequestsButton" type="button" hidden>
+        Ver solicitudes<span class="notification-badge" id="workerRequestBadge" hidden>0</span>
+      </button>
       <button class="button button-secondary notification-button" id="notificationButton" type="button" aria-label="Notificaciones" aria-haspopup="dialog">
         <span aria-hidden="true">🔔</span><span class="notification-badge" id="notificationBadge" hidden>0</span>
       </button>
@@ -1384,6 +1387,7 @@
       openAdminPanelButton: document.querySelector("#openAdminPanelButton"),
       manageAllButton: document.querySelector("#manageAllButton"),
       workerRequestsButton: document.querySelector("#workerRequestsButton"),
+      workerRequestBadge: document.querySelector("#workerRequestBadge"),
       entryModeChooser: document.querySelector("#entryModeChooser"),
       visitorChooser: document.querySelector("#visitorChooser"),
       workerAccess: document.querySelector("#workerAccess"),
@@ -1571,6 +1575,7 @@
     let activityLog = loadActivityLog();
     let notificationEvents = [];
     let notificationUnreadCount = 0;
+    let pendingWorkerRequestCount = 0;
     let notificationIdentity = "visitor";
     let demoSuggestions = [];
     const hasInventoryAccess = () => isAdmin || isWorker;
@@ -1757,13 +1762,36 @@
       }
     }
 
+    function updatePendingWorkerRequestCount(count) {
+      pendingWorkerRequestCount = count;
+      elements.workerRequestBadge.textContent = String(count);
+      elements.workerRequestBadge.hidden = !isAdmin || count === 0;
+      elements.workerRequestsButton.setAttribute(
+        "aria-label",
+        count ? `Ver solicitudes, ${count} pendientes` : "Ver solicitudes"
+      );
+    }
+
+    async function refreshPendingWorkerRequestCount() {
+      if (!REMOTE_INVENTORY_ENABLED || !isAdmin) return;
+      const result = await apiRequest("/api/worker-requests?view=requests", { admin: true });
+      if (!Array.isArray(result.requests)) {
+        throw new Error("El servidor devolvió una lista de solicitudes no válida.");
+      }
+      updatePendingWorkerRequestCount(result.requests.length);
+    }
+
     async function loadWorkerRequests() {
       if (!isAdmin && !canReviewApplications()) return;
       elements.refreshWorkerRequestsButton.disabled = true;
       setStatus(elements.workerRequestsStatus, "Cargando solicitudes…", "");
       try {
         const result = await apiRequest("/api/worker-requests?view=requests", { admin: true });
-        renderWorkerRequests(Array.isArray(result.requests) ? result.requests : []);
+        if (!Array.isArray(result.requests)) {
+          throw new Error("El servidor devolvió una lista de solicitudes no válida.");
+        }
+        updatePendingWorkerRequestCount(result.requests.length);
+        renderWorkerRequests(result.requests);
         setStatus(elements.workerRequestsStatus, "", "");
       } catch (error) {
         setStatus(elements.workerRequestsStatus, error.message, "error");
@@ -2606,6 +2634,14 @@
       elements.openAdminPanelButton.textContent =
         activeRoute === "home" && isAdminPanelOpen ? "Cerrar panel" : "Abrir panel";
       elements.workerRequestsButton.hidden = !isAdmin;
+      elements.workerRequestBadge.textContent = String(pendingWorkerRequestCount);
+      elements.workerRequestBadge.hidden = !isAdmin || pendingWorkerRequestCount === 0;
+      elements.workerRequestsButton.setAttribute(
+        "aria-label",
+        pendingWorkerRequestCount
+          ? `Ver solicitudes, ${pendingWorkerRequestCount} pendientes`
+          : "Ver solicitudes"
+      );
       elements.ownerQuickNav.hidden = !isAdmin;
       elements.adminRouteButton.hidden = true;
       elements.adminView.hidden = !isAdmin || activeRoute !== "admin";
@@ -5054,6 +5090,9 @@
         }
         render();
         refreshNotifications().catch(error => console.error("No se pudieron actualizar las notificaciones al iniciar sesión.", error));
+        refreshPendingWorkerRequestCount().catch(error =>
+          console.error("No se pudo actualizar el contador de solicitudes pendientes.", error)
+        );
         if (isAdmin) elements.adminPanel.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (error) {
         setStatus(elements.workerLoginStatus, error.message, "error");
@@ -5805,6 +5844,9 @@
         window.requestAnimationFrame(() => window.scrollTo({ top: restoredScrollY, behavior: "auto" }));
       }
       refreshNotifications().catch(error => console.error("No se pudieron cargar las notificaciones.", error));
+      refreshPendingWorkerRequestCount().catch(error =>
+        console.error("No se pudo actualizar el contador de solicitudes pendientes.", error)
+      );
     })().catch(error => {
       console.error("No se pudo restaurar la página anterior.", error);
       pageSessionReady = true;
@@ -5816,7 +5858,10 @@
     window.setInterval(() => {
       refreshNotifications(elements.notificationsDialog.open)
         .catch(error => console.error("No se pudieron actualizar las notificaciones.", error));
-    }, 60000);
+      refreshPendingWorkerRequestCount().catch(error =>
+        console.error("No se pudo actualizar el contador de solicitudes pendientes.", error)
+      );
+    }, 30000);
     if (/^[0-9a-f-]{36}$/i.test(PAYMENT_RETURN_ORDER_ID || "")) {
       history.replaceState(null, "", location.pathname);
       if (hasInventoryAccess()) updatePurchaseReturnStatus(PAYMENT_RETURN_ORDER_ID);
